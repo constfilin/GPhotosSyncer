@@ -362,69 +362,6 @@ class ImageFolder extends ImageObject {
       callback(null,"");
     }
   }
-  search_internal( gphotos_name, allow_any ) {
-    this.read();
-
-    common.log(4,"this="+this+",gphotos_name="+gphotos_name+",allow_any="+allow_any);
-    
-    // First look among files. The files need to match exactly
-    let result = this.files.find( (f) => {
-      return f.gphotos_name==gphotos_name;
-    });
-    if( result ) {
-      // If we found a file then we matches all characters in gphotos_name
-      // and this terminates our search
-      return [result];
-    }
-    
-    // Look among folders
-    return this.folders.map( (fld) => {
-      
-      // TODO: what happens if
-      // gphotos_name = avaea_investors_list.jpg
-      // folder name = 04_avaea
-      // Change the code to match "04_avaea" with just "avaea"
-      // 
-      if( allow_any ) {
-	if( gphotos_name.indexOf(fld.gphotos_name)!=0 )
-	  return fld.search_internal(gphotos_name,true);
-	if( gphotos_name[fld.gphotos_name.length]!='_')
-	  return fld.search_internal(gphotos_name,true);
-	return fld.search_internal(gphotos_name.substr(fld.gphotos_name.length+1),true);
-      }
-      common.log(5,"fld="+fld);
-      for( let n=0; true; n++ ) {
-	if( n==fld.gphotos_name.length ) {
-	  if( n==gphotos_name.length ) {
-	    // wow, both things stopped at the same time. We found a folder exactly matching gphotos_name
-	    return [fld];
-	  }
-	  if( gphotos_name[n]=='_' ) {
-	    common.log(3,"got match between '"+fld.gphotos_name+"' and '"+gphotos_name+"',n="+n);
-	    return fld.search_internal(gphotos_name.substr(n+1),true);
-	  }
-	}
-	if( n==gphotos_name.length ) {
-	  // folder name is longer than gphotos_name
-	  return []; // This is not a match
-	}
-	if( fld.gphotos_name[n]!=gphotos_name[n] ) {
-	  if( fld.gphotos_name[n-1]!='_' )
-	    return []; // gphotos_name is 'Foo_bar', folder name is like 'Foda'
-	  if( n<=2 )
-	    return []; // Too short of a match
-	  common.log(2,"2:got match between '"+fld.gphotos_name+"' and '"+gphotos_name+"',n="+n);
-	  return fld.search_internal(gphotos_name.substr(n),true);
-	}
-      }
-    }).reduce( (accumulator, elem, ndx ) => {
-      return accumulator.concat(elem);
-    },[]);
-  }
-  search( gphotos_name ) {
-    // All searches are case insensitive
-    return this.search_internal(gphotos_name.toLowerCase(),false);
-  }
   hash_files_by_timestamp_internal( result ) {
     this.files.forEach( (fl) => {
       // Files in GPhotos retain the EXIF date stored in the file, this is why we first match by it
