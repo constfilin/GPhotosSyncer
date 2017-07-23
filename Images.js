@@ -6,10 +6,10 @@
 const fs            = require('fs');
 const async         = require('async');
 const exif          = require('exif');  
-const deasync       = require('deasync');
 const child_process = require('child_process');
 
 const common        = require('./common');
+const Storage       = require('./Storage');
 
 /////////////////////////////////////////////////////////////////
 // classes
@@ -144,6 +144,9 @@ class ImageFile extends ImageObject {
 	// Next most trustworthy date is the min EXIF date
 	// And finally if all else fails we guess the date from the file location
 	self.date_of_image = self.filename_date || self.min_exif_date || self.path_date;
+	// A couple of fields necessary to keep this in storage
+	self.id        = self.gphotos_path;
+	self.timestamp = self.date_of_image;
 	callback(null,self);
       });
     }
@@ -284,6 +287,15 @@ class ImageFolder extends ImageObject {
       fl.dump(loglevel);
     });
   }
+  check_exif_locations() {
+    this.files.forEach( (fl) => {
+      fl.check_exif_locations();
+    });
+    this.folders.forEach( (fld) => {
+      fld.check_exif_locations();
+    });
+    return "";
+  }
   read_file_system() {
     // Read the file system
     let folders = [];
@@ -291,8 +303,7 @@ class ImageFolder extends ImageObject {
     fs.readdirSync(this.path).forEach( (element) => {
       const stats = fs.statSync(this.path+"/"+element);
       if( stats.isDirectory() ) {
-	let imageFolder = new ImageFolder(this.path+"/"+element,this);
-	folders.push(imageFolder.read_file_system());
+	folders.push(new ImageFolder(this.path+"/"+element,this));
       }
       else if( stats.isFile() ) {
 	if( element.match(/^.+\.(?:jpg|jpeg|png|mov|mp4)$/i) ) {
@@ -312,88 +323,47 @@ class ImageFolder extends ImageObject {
     this.files   = files;
     return this;
   }
-  read_exif_info( callback ) {
+  getImages( images, callback ) {
+    common.log(2,"Getting images of folder '"+this.path+"'");
+    if( (this.folders==undefined) || (this.files==undefined) ) {
+      this.read_file_system();
+    }
+    let self = this;
     async.eachLimit(
-      this.files,
+      self.folders,
       5,
-      ( im, callback ) => {
-        im.read_exif_info(callback);
+      ( f, callback ) => {
+	f.getImages(images,callback);
       },
       ( err ) => {
 	if( err ) {
-          callback(Error("Enumeration of files in '"+this.path+"' ("+err+")"),this);
+	  callback(err,images);
 	}
 	else {
-          async.eachLimit(
-	    this.folders,
-	    5,
-	    ( im, callback ) => {
-	      im.read_exif_info(callback);
+	  async.eachLimit(
+	    self.files,
+	    10,
+	    ( f, callback ) => {
+	      common.log(3,"reading EXIF info of file '"+f.path+"'");
+	      f.read_exif_info( (err,whatever) => {
+		if( !err ) {
+		  images.add(f);
+		}
+		callback(err,images);
+	      });
 	    },
 	    ( err ) => {
-	      if( err ) {
-		callback(Error("Enumeration of folders in '"+this.path+"' ("+err+")"),this);
-	      }
-	      else {
-		callback(null,this);
-	      }
+	      callback(err,images);
 	    }
-          );
+	  );
 	}
       }
     );
-  }
-  read( callback ) {
-    if( (this.folders==undefined) || (this.files==undefined) ) {
-      try {
-	this.read_file_system();
-	try {
-	  this.read_exif_info(callback);
-	}
-	catch( err ) {
-	  callback(Error("Cannot read EXIF info in '"+this.path+"' ("+err+")"),this);
-	}
-      }
-      catch( err ) {
-	callback(Error("Cannot read '"+this.path+"' ("+err+")"),this);
-      }
-    }
-    else {
-      callback(null,"");
-    }
-  }
-  hash_files_by_timestamp_internal( result ) {
-    this.files.forEach( (fl) => {
-      // Files in GPhotos retain the EXIF date stored in the file, this is why we first match by it
-      let date = fl.min_exif_date || fl.date_of_image || fl.path_date;
-      let ndx  = date ? (date.valueOf()/1000) : 0;
-      if( !result.hasOwnProperty(ndx) ) {
-        result[ndx] = [];
-      }
-      result[ndx].push(fl);
-    });
-    this.folders.forEach( (fl) => {
-      fl.hash_files_by_timestamp_internal(result);
-    });
-    return result;
-  }
-  hash_files_by_timestamp( callback ) {
-    return this.hash_files_by_timestamp_internal({},callback);
-  }
-  check_exif_locations() {
-    this.files.forEach( (fl) => {
-      fl.check_exif_locations();
-    });
-    this.folders.forEach( (fld) => {
-      fld.check_exif_locations();
-    });
-    return "";
   }
 }
 /////////////////////////////////////////////////////////////////
 // 
 /////////////////////////////////////////////////////////////////
 module.exports = {
-  'ImageFolder' : ImageFolder,
-  'ImageFile'   : ImageFile
+  'ImageFolder' : ImageFolder
 }
