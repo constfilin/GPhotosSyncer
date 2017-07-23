@@ -122,7 +122,7 @@ function get_images( storage_file, callback ) {
   catch( err ) {
     async.waterfall([
       ( callback ) => {
-	(new Images.ImageFolder(common.imagesRoot)).getImages(new Storage(),(err,images) => {
+	(new Images(common.imagesRoot)).getImages(new Storage(),(err,images) => {
 	  if( err ) {
 	    common.log(1,"Cannot read images ("+err+")");
 	  }

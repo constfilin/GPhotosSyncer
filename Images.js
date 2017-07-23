@@ -331,7 +331,7 @@ class ImageFolder extends ImageObject {
     let self = this;
     async.eachLimit(
       self.folders,
-      5,
+      1,
       ( f, callback ) => {
 	f.getImages(images,callback);
       },
@@ -342,7 +342,7 @@ class ImageFolder extends ImageObject {
 	else {
 	  async.eachLimit(
 	    self.files,
-	    10,
+	    5,
 	    ( f, callback ) => {
 	      common.log(3,"reading EXIF info of file '"+f.path+"'");
 	      f.read_exif_info( (err,whatever) => {
@@ -364,6 +364,4 @@ class ImageFolder extends ImageObject {
 /////////////////////////////////////////////////////////////////
 // 
 /////////////////////////////////////////////////////////////////
-module.exports = {
-  'ImageFolder' : ImageFolder
-}
+module.exports = ImageFolder;
