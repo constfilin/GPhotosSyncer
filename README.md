@@ -18,7 +18,7 @@ options you can give to it.
 
 # Note
 When you first run this tool with a command line option needing knowledge of **images** or **photos**
-then the tool attempts to read these using APIs. This such reading is slow, the tool caches the read
+then the tool attempts to read these using APIs. Since such reading is slow, the tool caches the read
 **images** or **photos** in files **./allimages.json** and **./allphotos.json** respectively. Subsequent
 attempts to access images or photos de-serialize from these files. If you need to re-read images or
 photos again, simply wipe those files out.
