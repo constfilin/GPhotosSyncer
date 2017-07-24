@@ -15,3 +15,9 @@ work this around I just had to create a special album where I added all the olde
 
 Please run **GPhotosSyncer.js** with **--help** command line option to see what other command line 
 options you can give to it.
+
+When you first run this tool with a command line option needing knowledge of **images** or **photos**
+then the tool attempts to read these using APIs. This such reading is slow, the tool caches the read
+**images** or **photos** in files **./allimages.json** and **./allphotos.json** respectively. Subsequent
+attempts to access images or photos de-serialize from these files. If you need to re-read images or
+photos again, simple wipe those files out.
