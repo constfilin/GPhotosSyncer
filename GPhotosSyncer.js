@@ -23,39 +23,48 @@ class Action {
 const _ACTIONS = [
   new Action("// Actions on picasa"),
   new Action("picasa_showYears","shows the number of images Picasa has for each year",false,true,function(images,photos) {
-    let by_years = photos.rehash( p => p.timestamp.getFullYear() );
+    let by_years = Object.values(photos.storage).toHash(p => p.timestamp.getFullYear(),true);
     for( let year in by_years ) {
       console.log("For year "+year+" there are "+by_years[year].length+" photos");
     }
   }),
   new Action("picasa_showYear=year","shows Picasa photos timestamped to given year",false,true,function(images,photos) {
     let year = Number(common.argv[this.name_parts[0]]);
-    photos.filter( p => p.timestamp.getFullYear()==year ).forEach( (p) => {
-      console.log(p.id+" => "+p.title);
+    Object.values(photos.storage).filter(p => p.timestamp.getFullYear()==year).forEach( (p) => {
+      console.log(p.title+" => timestamp="+p.timestamp+",id="+p.id);
     });
   }),
   new Action("picasa_matchingTitle=pattern","shows Picasa photos with titles matching given regexp pattern",false,true,function(images,photos) {
     let re = new RegExp(common.argv[this.name_parts[0]],"i");
-    photos.filter( p => p.title.match(re) ).forEach( (p) => {
+    Object.values(photos.storage).filter( p => p.title.match(re) ).forEach( (p) => {
       console.log(p.id+" => "+p.title);
     });
   }),
   new Action("picasa_mismatchingTitle=pattern","shows Picasa photos with titles not matching given regexp pattern",false,true,function(images,photos) {
     let re = new RegExp(common.argv[this.name_parts[0]],"i");
-    photos.filter( p => (p.title.match(re)==null) ).forEach( (p) => {
+    Object.values(photos.storage).filter( p => (p.title.match(re)==null) ).forEach( (p) => {
       console.log(p.id+" => "+p.title);
     });
   }),
   new Action("picasa_mismatchingYear=year","shows Picasa photos timestamped to given year and with title mismatching the year",false,true,function(images,photos) {
     let year = Number(common.argv[this.name_parts[0]]); 
     let re   = new RegExp("^"+year+"_.+","i");
-    photos.filter( p => (p.timestamp.getFullYear()==year) && (p.title.match(re)==null) ).forEach( (p) => {
+    Object.values(photos.storage).filter( p => (p.timestamp.getFullYear()==year) && (p.title.match(re)==null) ).forEach( (p) => {
 	console.log(p.id+" => "+p.title);
     });
   }),
   new Action("picasa_mismatchingYears","shows Picasa photos whose title mismatch the image timestamp",false,true,function(images,photos) {
-    photos.filter( p => p.title.indexOf(p.timestamp.getFullYear()+"_")!=0 ).forEach( (p) => {
+    Object.values(photos.storage).filter( p => p.title.indexOf(p.timestamp.getFullYear()+"_")!=0 ).forEach( (p) => {
       console.log(p.id+" => year="+p.timestamp.getFullYear()+","+p.title);
+    });
+  }),
+  new Action("picasa_minusImagesYear=year","shows Picasa photos that are not among images for given year",true,true,function(images,photos) {
+    let year = Number(common.argv[this.name_parts[0]]);
+    Object.values(common.hash_diff(
+      Object.values(photos.storage).filter( p => (p.timestamp.getFullYear()==year) ).toHash( p => p.id ),
+      Object.values(images.storage).filter( i => (i.timestamp.getFullYear()==year) ).toHash( i => i.id )
+    )).forEach( p => {
+      console.log(p.title+" => "+p.timestamp+","+p.content.src);
     });
   }),
   new Action("picasa_count","shows the count of photos in Picasa",false,true,function(images,photos) {
@@ -63,48 +72,54 @@ const _ACTIONS = [
   }),
   new Action("// Actions on images (i.e. file system)"),
   new Action("images_showYears","shows the number of images has for each year",true,false,function(images,photos) {
-    let by_years = images.rehash( p => p.timestamp.getFullYear() );
+    let by_years = Object.values(images.storage).toHash(p => p.timestamp.getFullYear(),true);
     for( let year in by_years ) {
       console.log("For year "+year+" there are "+by_years[year].length+" photos");
     }
   }),
   new Action("images_showYear=year","shows images timestamped to given year",true,false,function(images,photos) {
     let year = Number(common.argv[this.name_parts[0]]);
-    images.filter( p => p.timestamp.getFullYear()==year ).forEach( (p) => {
+    Object.values(images.storage).filter( p => p.timestamp.getFullYear()==year ).forEach( (p) => {
       console.log(p.id+" => "+p.path);
     });
   }),
   new Action("images_matchingGPhotosPath=pattern","shows images with gphotos_path matching given regexp pattern",true,false,function(images,photos) {
     let re = new RegExp(common.argv[this.name_parts[0]],"i");
-    images.filter( p => p.gphotos_path.match(re) ).forEach( (p) => {
+    Object.values(images.storage).filter( p => p.gphotos_path.match(re) ).forEach( (p) => {
       console.log(p.id+" => "+p.path);
     });
   }),
   new Action("images_mismatchingGPhotosPath=pattern","shows images with gphotos_path not matching given regexp pattern",true,false,function(images,photos) {
     let re = new RegExp(common.argv[this.name_parts[0]],"i");
-    images.filter( p => (p.gphotos_path.match(re)==null) ).forEach( (p) => {
-      console.log(p.id+" => "+p.path);
+    Object.values(images.storage).filter( p => (p.gphotos_path.match(re)==null) ).forEach( (i) => {
+      console.log(i.id+" => "+i.path);
     });
   }),
   new Action("images_mismatchingYear=year","shows images timestamped to given year and with gphotos_path mismatching the year",true,false,function(images,photos) { 
     let year = Number(common.argv[this.name_parts[0]]); 
     let re   = new RegExp("^"+year+"_.+","i");
-    images.filter( p => (p.timestamp.getFullYear()==year) && (p.gphotos_path.match(re)==null) ).forEach( (p) => {
-      console.log(p.id+" => "+p.path);
+    Object.values(images.storage).filter( p => (p.timestamp.getFullYear()==year) && (p.gphotos_path.match(re)==null) ).forEach( (i) => {
+      console.log(i.id+" => "+i.path);
     });
   }),
   new Action("images_mismatchingYears","shows images whose title mismatch the image timestamp",true,false,function(images,photos) {
-    images.filter( p => p.gphotos_path.indexOf(p.timestamp.getFullYear()+"_")!=0 ).forEach( (p) => {
-      console.log(p.id+" => year="+p.timestamp.getFullYear()+","+p.title);
+    Object.values(images.storage).filter( p => p.gphotos_path.indexOf(p.timestamp.getFullYear()+"_")!=0 ).forEach( (i) => {
+      console.log(i.id+" => year="+i.timestamp.getFullYear()+","+i.title);
+    });
+  }),
+  new Action("images_minusGPhotosYear=year","shows images that are not among Picasa photos for given year",true,true,function(images,photos) {
+    let year = Number(common.argv[this.name_parts[0]]);
+    Object.values(common.hash_diff(
+      Object.values(images.storage).filter( i => (i.timestamp.getFullYear()==year) ).toHash( i => i.id ),
+      Object.values(photos.storage).filter( p => (p.timestamp.getFullYear()==year) ).toHash( p => p.id )
+    )).forEach( i => {
+      console.log(i.gphotos_path+" => "+i.timestamp+","+i.path);
     });
   }),
   new Action("images_count","shows the count of images",true,false,function(images,photos) {
     console.log(images.size);
   }),
   new Action("// Other"),
-  new Action("compare_year=year","compares Picasa photos timestamped with given year with similar images",true,true,function(images,photos) {
-    console.log(this.name_parts[0]+" is not implemented");
-  }),
   new Action("picasa_to_images","enumerate all Picasa files and make sure that file system has the copy",true,true,function(images,photos) {
     console.log(this.name_parts[0]+" is not implemented");
   }),
@@ -238,7 +253,7 @@ if( valid_actions.length ) {
 	    (a.proc.bind(a))(images,photos);
 	  }
 	  catch( err ) {
-	    common.log(1,"Exception from handler "+a);
+	    common.log(1,"Exception from handler "+a.name+" ("+err+")");
 	  }
 	}
       });
@@ -246,9 +261,15 @@ if( valid_actions.length ) {
 }
 else {
   console.log(
-    "USAGE: "+process.argv[1]+" [--loglevel=loglevel] [--dryrun] --action\n" +
+    "USAGE: "+process.argv[1]+" [--loglevel=loglevel] [--dryrun] --action --action...\n" +
       "--loglevel - defines verbosity.\n" +
       "--dryrun   - just report inconsistencies found without prompting to fix them\n"+
       "--action   - describes what we are going to do, one of:\n"+
-      _ACTIONS.map( a => "    "+a.name+(a.description?" - "+a.description:"") ).join("\n"));
+      _ACTIONS.map( a => "    "+a.name.padEnd(40)+(a.description?" - "+a.description:"") ).join("\n")+"\n"+
+      "\n"+
+      "If several actions are given on the command line then all of them are executed in the given order\n"+
+      "E.G.:\n"+
+      "   "+process.argv[1]+" --images_minusGPhotosYear=1915 --picasa_minusImagesYear=1915\n"+
+      "Will show all the delta between images stored on file system and in GPhotos for year 1915.\n"
+  );
 }

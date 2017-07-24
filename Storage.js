@@ -26,19 +26,6 @@ class Storage {
       }
     }
   }
-  filter( proc ) {
-    return Object.values(this.storage).filter( p => proc(p) );
-  }
-  rehash( proc ) {
-    let result = {};
-    for( let key in this.storage ) {
-      let new_key = proc(this.storage[key]);
-      if( !result.hasOwnProperty(new_key) )
-	result[new_key] = [];
-      result[new_key].push(this.storage[key]);
-    };
-    return result;
-  }
 }
 
 module.exports = Storage;

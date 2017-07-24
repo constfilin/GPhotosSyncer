@@ -28,6 +28,31 @@ class EXIFDate extends Date {
   }
 }
 /////////////////////////////////////////////////////////////////
+// 
+/////////////////////////////////////////////////////////////////
+Array.prototype.toHash = function( hashing_proc, put_same_keys_in_array ) {
+  let result  = {};
+  let common = module.exports;
+  this.forEach( (elem) => {
+    let key = hashing_proc(elem);
+    if( put_same_keys_in_array ) {
+      if( !result.hasOwnProperty(key) ) {
+	result[key] = [];
+      }
+      result[key].push(elem);
+    }
+    else {
+      if( !result.hasOwnProperty(key) ) {
+	result[key] = elem;
+      }
+      else {
+	common.log(3,"Hash already has key '"+key+"', leaving the old value");
+      }
+    }
+  });
+  return result;
+}
+/////////////////////////////////////////////////////////////////
 // module exports
 /////////////////////////////////////////////////////////////////
 module.exports = {
@@ -61,11 +86,7 @@ module.exports = {
     }
   },
   pad_number( n, max_length ) {
-    let result = String(n);
-    for( let l=result.length; l<max_length; l=result.length ) {
-      result = '0'+result;
-    }
-    return result;
+    return String(n).padStart(max_length,"0");
   },
   match_string( s, re, capture_names ) {
     let matches = s.match(re);
@@ -92,70 +113,13 @@ module.exports = {
     });
     return (result=='') ? default_answer : result;    
   },
-  compare_timestamp_hashes( hash1, hash1_element_constructor, hash2, hash2_element_constructor ) {
-
-    //let hash2_keys = Object.keys(hash2).sort();
-    let common         = module.exports;
-    let default_answer = undefined;
-    let result         = undefined;
-
-    for( let ts in hash1 ) {
-      let hash1_elements = hash1[ts];
-      if( hash1_elements.length==1 ) {
-	let hash1_element = hash1_elements[0];
-	let hash2_elements = hash2.hasOwnProperty(ts) ? hash2[ts] : [];
-	if( hash2_elements.length==0 ) {
-	  result = "There are no "+hash2_element_constructor.name+"s with timestamp '"+ts+"' corresponding to "+hash1_element_constructor.name+" '"+hash1_element+"'";
-	  if( common.argv.hasOwnProperty("dryrun") ) {
-	    common.log(1,result);
-	  }
-	  else {
-	    default_answer = common.get_answer(
-	      "There are no "+hash2_element_constructor.name+"s with timestamp '"+ts+"' corresponding to "+hash1_element_constructor.name+" '"+hash1_element+"'. Fix it?",
-	      default_answer);
-	    if( default_answer=='y' ) {
-	      if( (result=hash2_element_constructor.create(hash1_element))=='' ) {
-		common.log(2,"Uploaded "+hash1_element_constructor.name+" '"+hash1_element+" to "+hash2_element_constructor.name);
-	      }
-	      else {
-		common.log(2,"Cannot upload  "+hash1_element_constructor.name+" '"+hash1_element+" to "+hash2_element_constructor.name+" ("+result+")");
-	      }
-	    }
-	  }
-	}
-	else if( hash2_elements.length==1 ) {
-	  let hash2_element = hash2_elements[0];
-	  common.log(4,"Found "+hash2_element_constructor.name+" '"+hash2_element+"' corresponding to "+hash1_element_constructor.name+" '"+hash1_element+"'");
-	  if( !hash1_element.names_match(hash2_element) ) {
-	    result = "Found name difference between "+hash2_element_constructor.name+" '"+hash2_element+"' and "+hash1_element_constructor.name+" '"+hash1_element+"'";
-	    if( common.argv.hasOwnProperty("dryrun") ) {
-	      common.log(1,result);
-	    }
-	    else {
-	      default_answer = common.get_answer(
-		"Found name difference between "+hash2_element_constructor.name+" '"+hash2_element+"' and "+hash1_element_constructor.name+" '"+hash1_element+"' ("+difference.description+"). Fix it?",
-		default_answer);
-	      if( default_answer=='y' ) {
-		if( (result=hash2_element.rename(hash1_element))=='' ) {
-		  common.log(2,"Fixed name difference between "+hash2_element_constructor.name+" '"+hash2_element+"' and "+hash1_element_constructor.name+" '"+hash1_element+"'");
-		}
-		else {
-		  common.log(2,"Cannot fix name difference between "+hash2_element_constructor.name+" '"+hash2_element+"' and "+hash1_element_constructor.name+" '"+hash1_element+"' ("+result+")");
-		}
-	      }
-	    }
-	  }
-	  else {
-	    common.log(4,hash2_element_constructor.name+" '"+hash2_element+"' has the same name as "+hash1_element_constructor.name+" '"+hash1_element+"'");
-	  }
-	}
-	else {
-	  common.log(2,"There are "+hash2_elements.length+" "+hash2_element_constructor.name+"s with timestamp '"+ts+"' corresponding to "+hash1_element_constructor.name+" '"+hash1_element+"'");
-	}
-      }
-      else {
-	common.log(2,"There are "+hash1_elements.length+" "+hash1_element_constructor.name+"s with timestamp '"+ts+"' ("+hash1_elements+")");
+  hash_diff( h1, h2 ) {
+    let result = {};
+    for( let k in h1 ) {
+      if( !h2.hasOwnProperty(k) ) {
+	result[k] = h1[k];
       }
     }
+    return result;
   }
 }

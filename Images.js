@@ -145,8 +145,8 @@ class ImageFile extends ImageObject {
 	// And finally if all else fails we guess the date from the file location
 	self.date_of_image = self.filename_date || self.min_exif_date || self.path_date;
 	// A couple of fields necessary to keep this in storage
-	self.id        = self.gphotos_path;
 	self.timestamp = self.date_of_image;
+	self.id        = (String(self.timestamp.valueOf())+"_"+self.gphotos_path).toLowerCase();
 	callback(null,self);
       });
     }

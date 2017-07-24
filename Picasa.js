@@ -214,7 +214,11 @@ class Picasa {
 	    else {
 	      common.log(3,"Got "+page_result.length+" photos for query '"+query+"' in album '"+album.title+"', start_index="+start_index);
 	      page_result.forEach( (e) => {
-		photos.add(self.constructor._parse_entry(e,_PHOTO_SCHEMA));
+		// Experiments show that the same image can have different IDs in the different albums
+		// For this we do away with Picasa ID and instead build own ID
+		let photo = self.constructor._parse_entry(e,_PHOTO_SCHEMA);
+		photo.id  = (photo.timestamp.valueOf()+"_"+p.title).toLowerCase();
+		photos.add(photo);
 	      });
 	      start_index += page_result.length;
 	      all_pages_are_loaded = page_result.length<accessTokenParams['max-results'];
