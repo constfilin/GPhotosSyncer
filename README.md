@@ -6,7 +6,7 @@ to Google Photos and back.
 
 Google Drive API [does not work](https://kunnas.com/google-photos-is-a-disaster/) for this purpose.
 This is why I switched to [Picasa API](https://developers.google.com/gdata/docs/2.0/basics) but it
-also has its onw limitations.
+also has its own limitations.
 
 [Picasa API](https://developers.google.com/gdata/docs/2.0/basics) errors out if you attempts to 
 read more than 10000 photos from an ablum. Since Picasa API apparently enumerates photos from
