@@ -11,12 +11,17 @@ const deasync      = require('deasync');
 /////////////////////////////////////////////////////////////////
 class EXIFDate extends Date {
   constructor( year, month, date, hour, minute, second ) {
-    super(year,month,date,hour,minute,second);
+    if( year instanceof Date ) {
+      super(year);
+    }
+    else {
+      super(year,month,date,hour,minute,second);
+    }
   }
   toEXIFString() {
     let common = module.exports;
     return this.getFullYear()+":"+common.pad_number(this.getMonth()+1,2)+":"+common.pad_number(this.getDate(),2)+" "+
-      common.pad_number(this.getHours(),2)+":"+common.pad_number(this.getMinutes(),2)+":"+common.pad_number(this.getSeconds());
+      common.pad_number(this.getHours(),2)+":"+common.pad_number(this.getMinutes(),2)+":"+common.pad_number(this.getSeconds(),2);
   }
   static fromEXIFString( es ) {
     let m;
@@ -113,11 +118,43 @@ module.exports = {
     });
     return (result=='') ? default_answer : result;    
   },
-  hash_diff( h1, h2 ) {
-    let result = {};
-    for( let k in h1 ) {
-      if( !h2.hasOwnProperty(k) ) {
-	result[k] = h1[k];
+  subtract_items( a1, a2 ) {
+    let result = [];
+    const ms_in_hour = 60*60*1000;
+    const common     = module.exports;
+    const by_id1     = a1.toHash(i => i.id);
+    const by_id2     = a2.toHash(i => i.id);
+    const by_title2  = a2.toHash(i => i.title.toLowerCase(),true);
+    for( let k in by_id1 ) {
+      let a1 = by_id1[k];
+      if( by_id2.hasOwnProperty(k) ) {
+	// same ID is among the other items, it does not get to the result
+      }
+      else {
+	let a1_title = a1.title.toLowerCase();
+	if( by_title2.hasOwnProperty(a1_title) ) {
+	  // Let see if there is an identically titled item in a2 with timestamp
+	  // "close enough" to the timestamp of item in a1
+	  let search_results = by_title2[a1_title].reduce( (accumulator,element) => {
+	    let diff = Math.abs(element.timestamp.valueOf()-a1.timestamp.valueOf());
+	    return (diff<accumulator.diff)? {'diff':diff,'element':element} : accumulator;
+	  },{'diff':Number.POSITIVE_INFINITY,'element':undefined});
+	  if( search_results.diff<12*ms_in_hour ) {
+	    // this is "close enough"
+	  }
+	  else if( search_results<24*ms_in_hour ) {
+	    common.log(2,"Found items with title '"+a1_title+"' but with timestamps different by "+(Math.abs(i.timestamp.valueOf()-a1.timestamp.valueOf())/1000)+" seconds");
+	  }
+	  else {
+	    // Have the same title but too different timestamps
+	    a1.closest_match = search_results.element;
+	    result.push(a1);
+	  }
+	}
+	else {
+	  // Don't even have the same title
+	  result.push(a1);
+	}
       }
     }
     return result;

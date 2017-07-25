@@ -347,7 +347,7 @@ class ImageFolder extends ImageObject {
 	      common.log(3,"reading EXIF info of file '"+f.path+"'");
 	      f.read_exif_info( (err,whatever) => {
 		if( !err ) {
-		  images.add(f);
+		  images.add(f.id,f);
 		}
 		callback(err,images);
 	      });

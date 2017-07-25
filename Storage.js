@@ -17,14 +17,14 @@ class Storage {
       this.size++;
     }
   }
-  add( p ) {
-    if( !this.storage.hasOwnProperty(p.id) ) {
-      this.storage[p.id] = this.constructor.make_sure_timeout_is_date(p);
-      this.size++;
-      if( this.size%100==0 ) {
-	common.log(3,"the number of items is "+this.size);
-      }
-    }
+  add( id, item ) {
+    if( this.storage.hasOwnProperty(id) )
+      return false;
+    this.storage[id] = this.constructor.make_sure_timeout_is_date(item);
+    this.size++;
+    if( this.size%100==0 )
+      common.log(3,"the number of items is "+this.size);
+    return true;
   }
 }
 
