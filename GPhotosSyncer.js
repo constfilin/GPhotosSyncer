@@ -184,9 +184,8 @@ function get_images( storage_file, callback ) {
 	callback(null,images);
       }],
       ( err, images ) => {
-	if( !err ) {
-	  callback(null,images);
-	}
+	common.exiftool.end();
+        callback(null,images);
       }
     );
   }
@@ -235,10 +234,7 @@ function get_photos( storage_file, callback ) {
 	callback(null,photos);
       }],
       ( err, photos ) => {
-	if( !err ) {
-	  callback(null,photos);
-	}
-	common.exiftool.end();
+        callback(err,photos);
       }
     );
   }
