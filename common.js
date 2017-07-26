@@ -3,8 +3,9 @@
 /////////////////////////////////////////////////////////////////
 // module globals
 /////////////////////////////////////////////////////////////////
-const util         = require('util');
-const deasync      = require('deasync');
+const util              = require('util');
+const deasync           = require('deasync');
+const exiftool_vendored = require('exiftool-vendored');  
 
 /////////////////////////////////////////////////////////////////
 // classes
@@ -61,8 +62,12 @@ Array.prototype.toHash = function( hashing_proc, put_same_keys_in_array ) {
 // module exports
 /////////////////////////////////////////////////////////////////
 module.exports = {
-  imagesRoot : "/media/WDPASSPORT/public/Video",
-  'EXIFDate' : EXIFDate,
+  imagesRoot  : "/media/WDPASSPORT/public/Video",
+  imagesCache : './allimages.json',
+  photosCache : './allphotos.json',
+  exiftool    : exiftool_vendored.exiftool,
+  exiftool_dt : exiftool_vendored.ExifDateTime,
+  'EXIFDate'  : EXIFDate,
   month_names : [
     '',
     'January',

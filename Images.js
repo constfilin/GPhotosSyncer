@@ -4,8 +4,8 @@
 // module globals
 /////////////////////////////////////////////////////////////////
 const fs            = require('fs');
+const os            = require('os')
 const async         = require('async');
-const exif          = require('exif');  
 const child_process = require('child_process');
 
 const common        = require('./common');
@@ -17,7 +17,7 @@ const Storage       = require('./Storage');
 class ImageObject {
   static to_gphotos( s ) {
     // do not forget about file name extensions (if any)
-    return s.toLowerCase().replace(/[^a-z0-9]/ig,'_').replace(/_+/g,'_').replace(/^_/,'').replace(/_$/,'').replace(/_(jpe?g|png|mp4)$/i,'.$1');
+    return s.toLowerCase().replace(/[^a-z0-9]/ig,'_').replace(/_+/g,'_').replace(/^_/,'').replace(/_$/,'').replace(/_(jpe?g|png|mp4|mov|vfw)$/i,'.$1');
   }
   constructor( path, parent ) {
     this.relative_path = path.substr(common.imagesRoot.length+1);
@@ -31,22 +31,6 @@ class ImageObject {
   }
 }
 class ImageFile extends ImageObject {
-  static get_exif_dates( result, o ) {
-    for( let k in o ) {
-      if( typeof(o[k])=='string' ) {
-	if( k.match(/^.*date.*$/i) ) {
-	  let d = common.EXIFDate.fromEXIFString(o[k]);
-	  if( d.toString()!='Invalid Date' ) {
-	    result[k] = d;
-	  }
-	}
-      }
-      else if( o[k].constructor==Object ) {
-	ImageFile.get_exif_dates(result,o[k]);
-      }
-    }
-    return result;
-  }
   guess_date_from_path( relative_path ) {
     // now match the relative_path to different regexps to figure out object date depending on its relative_path
     this.max_discrepancy_minutes = 15*24*60; // Any date in the month will pretty much do
@@ -127,27 +111,25 @@ class ImageFile extends ImageObject {
     this.path_date     = this.guess_date_from_path(this.relative_path);
     this.filename_date = this.guess_date_from_filename(this.relative_path);
   }
-  read_exif_info( callback ) {
+  _initialize_storage_fields( callback ) {
+    // A couple of fields necessary to keep this in storage
+    this.timestamp = this.filename_date || this.min_exif_date || this.path_date;
+    this.id        = (String(this.timestamp.valueOf())+"_"+this.gphotos_path).toLowerCase();
+    callback(null,this);	      
+  }
+  read_exif_info( callback ) {    
     if( this.min_exif_date ) {
       callback(null,this);
     }
     else {
       let self = this;
-      new exif.ExifImage({ image : this.path },function( err, result ) {
-	if( err ) {
-	  self.min_exif_date = undefined;
-	}
-	else {
-	  self.min_exif_date = Object.values(ImageFile.get_exif_dates({},result)).reduce( (accumulator,value) => { return value<accumulator?value:accumulator; });
-	}
-	// Most of all we trust the date that might come from the base name of the file (if there is any)
-	// Next most trustworthy date is the min EXIF date
-	// And finally if all else fails we guess the date from the file location
-	self.date_of_image = self.filename_date || self.min_exif_date || self.path_date;
-	// A couple of fields necessary to keep this in storage
-	self.timestamp = self.date_of_image;
-	self.id        = (String(self.timestamp.valueOf())+"_"+self.gphotos_path).toLowerCase();
-	callback(null,self);
+      common.exiftool.read(this.path).then( (tags) => {
+	self.min_exif_date = new common.EXIFDate(new Date(Math.min(...Object.values(tags).filter( t => t instanceof common.exiftool_dt ).map( t => t.toDate()))));
+	self._initialize_storage_fields(callback);
+      }).catch( (err) => {
+	common.log(2,"Cannot read EXIF info of '"+self.path+"' ("+err+")");
+	self.min_exif_date = undefined;
+	self._initialize_storage_fields(callback);
       });
     }
   }
@@ -231,18 +213,18 @@ class ImageFile extends ImageObject {
   }
   does_date_match( dt ) {
     if( !dt ) return false;
-    return Math.abs(this.date_of_image.valueOf()-dt.valueOf())<=(this.max_discrepancy_minutes*60*1000);
+    return Math.abs(this.timestamp.valueOf()-dt.valueOf())<=(this.max_discrepancy_minutes*60*1000);
   }
   check_exif_locations() {
     // Make sure EXIF timestamps are right
     let default_answer='y',result;
     if( !this.does_date_match(this.min_exif_date) ) {
       default_answer = common.get_answer(
-	"File '"+this.path+"' needs EXIF date updated from '"+(this.min_exif_date?this.min_exif_date.toEXIFString():"n/a")+"' to '"+this.date_of_image.toEXIFString()+"'. Do it?",
+	"File '"+this.path+"' needs EXIF date updated from '"+(this.min_exif_date?this.min_exif_date.toEXIFString():"n/a")+"' to '"+this.timestamp.toEXIFString()+"'. Do it?",
 	default_answer);
       if( default_answer.toLowerCase()=='y' ) {
-	if( (result=this.set_exif_timestamp(this.date_of_image.toEXIFString()))!='' ) {
-	  common.log(1,"Cannot set EXIF timestamps of '"+this.path+" to '"+this.date_of_image.toEXIFString()+"' ("+result+")");
+	if( (result=this.set_exif_timestamp(this.timestamp.toEXIFString()))!='' ) {
+	  common.log(1,"Cannot set EXIF timestamps of '"+this.path+" to '"+this.timestamp.toEXIFString()+"' ("+result+")");
 	}
       }
     }
@@ -254,9 +236,9 @@ class ImageFile extends ImageObject {
       // do something else if case_number is 3 - this means that we "guessed" the date and the date
       // and they were not in the original file. Do not put it into the new file name either
       let proposed_path = common.imagesRoot+"/"+
-	  this.date_of_image.getFullYear()+"/"+
-	  common.pad_number(this.date_of_image.getMonth()+1,2)+"."+common.month_names[this.date_of_image.getMonth()+1]+"/"+
-	  ((this.case_number!=3)?common.pad_number(this.date_of_image.getDate(),2):"")+this.path_parts.enddate+"/"+
+	  this.timestamp.getFullYear()+"/"+
+	  common.pad_number(this.timestamp.getMonth()+1,2)+"."+common.month_names[this.timestamp.getMonth()+1]+"/"+
+	  ((this.case_number!=3)?common.pad_number(this.timestamp.getDate(),2):"")+this.path_parts.enddate+"/"+
 	  (this.path_parts.topic ? this.path_parts.topic+"/" : "")+
 	  this.path_parts.tail;
       if( this.path!=proposed_path ) {
@@ -331,7 +313,7 @@ class ImageFolder extends ImageObject {
     let self = this;
     async.eachLimit(
       self.folders,
-      1,
+      1, // all the parallelism happens on files
       ( f, callback ) => {
 	f.getImages(images,callback);
       },
@@ -342,7 +324,7 @@ class ImageFolder extends ImageObject {
 	else {
 	  async.eachLimit(
 	    self.files,
-	    5,
+	    os.cpus().length,
 	    ( f, callback ) => {
 	      common.log(3,"reading EXIF info of file '"+f.path+"'");
 	      f.read_exif_info( (err,whatever) => {
@@ -364,4 +346,7 @@ class ImageFolder extends ImageObject {
 /////////////////////////////////////////////////////////////////
 // 
 /////////////////////////////////////////////////////////////////
-module.exports = ImageFolder;
+module.exports = {
+  'ImageFolder' : ImageFolder,
+  'ImageFile'   : ImageFile
+};

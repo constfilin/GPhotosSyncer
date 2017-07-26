@@ -10,9 +10,6 @@ const Storage = require('./Storage');
 const Picasa  = require('./Picasa');
 const Images  = require('./Images');
 
-const _ALL_IMAGES_FILE = './allimages.json';
-const _ALL_PROTOS_FILE = './allphotos.json';
-
 class Action {
   constructor( name, description, needs_images, needs_photos, proc ) {
     this.name         = name;
@@ -65,7 +62,7 @@ const _ACTIONS = [
       images.filter( i => { i.title=i.gphotos_path; return (i.timestamp.getFullYear()==year); } )
     ).forEach( p => {
       if( p.closest_match ) {
-	console.log(p.id+" => "+p.timestamp+","+p.content.src+", closest is "+p.closest_match.path);
+	console.log(p.id+" => "+p.timestamp+","+p.content.src+", closest is "+p.closest_match.path+" with timestamp="+p.closest_match.timestamp);
       }
       else {
 	console.log(p.id+" => "+p.timestamp+","+p.content.src+", this photo DOES NOT HAVE CLOSEST IMAGE");
@@ -119,10 +116,9 @@ const _ACTIONS = [
 	console.log(i.id+" => "+(new common.EXIFDate(i.timestamp)).toEXIFString()+","+i.path+",closest is "+(new common.EXIFDate(i.closest_match.timestamp)).toEXIFString()+".\nTry:\n"+
 		    "/usr/bin/exiftool '-AllDates="+(new common.EXIFDate(i.closest_match.timestamp)).toEXIFString()+"' '"+i.path+"'\n"+
 		    process.argv[0]+" PatchStorage.js "+
-		    "'--storagefile="+_ALL_IMAGES_FILE+"' "+
+		    "'--storagefile="+common.imagesCache+"' "+
 		    "'--oid="+i.id+"' "+
 		    "'--min_exif_date="+i.closest_match.timestamp.toISOString()+"' "+
-		    "'--date_of_image="+i.closest_match.timestamp.toISOString()+"' "+
 		    "'--timestamp="+i.closest_match.timestamp.toISOString()+"' "+
 		    "'--id="+i.closest_match.id+"'"
 		   );
@@ -173,10 +169,9 @@ function get_images( storage_file, callback ) {
     callback(null,new Storage(require(storage_file)));
   }
   catch( err ) {
-    console.log("!");
     async.waterfall([
       ( callback ) => {
-	(new Images(common.imagesRoot)).getImages(new Storage(),(err,images) => {
+	(new Images.ImageFolder(common.imagesRoot)).getImages(new Storage(),(err,images) => {
 	  if( err ) {
 	    common.log(1,"Cannot read images ("+err+")");
 	  }
@@ -243,6 +238,7 @@ function get_photos( storage_file, callback ) {
 	if( !err ) {
 	  callback(null,photos);
 	}
+	common.exiftool.end();
       }
     );
   }
@@ -260,7 +256,7 @@ if( valid_actions.length ) {
 	  callback(null);
 	}
 	else {
-	  get_images(_ALL_IMAGES_FILE,(err,images_)=> {
+	  get_images(common.imagesCache,(err,images_)=> {
 	    if( err ) {
 	      common.log(1,"There was an error getting images ("+err+")");
 	    }
@@ -276,7 +272,7 @@ if( valid_actions.length ) {
 	  callback(null,photos);
 	}
 	else {
-	  get_photos(_ALL_PROTOS_FILE,(err,photos_)=>{
+	  get_photos(common.photosCache,(err,photos_)=>{
 	    if( err ) {
 	      common.log(1,"There was an error getting photos ("+err+")");
 	    }
