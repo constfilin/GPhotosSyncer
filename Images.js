@@ -124,7 +124,9 @@ class ImageFile extends ImageObject {
     else {
       let self = this;
       common.exiftool.read(this.path).then( (tags) => {
-	self.min_exif_date = new common.EXIFDate(new Date(Math.min(...Object.values(tags).filter( t => t instanceof common.exiftool_dt ).map( t => t.toDate()))));
+	let exif_dates = Object.keys(tags).filter( k => (tags[k] instanceof common.exiftool_dt) && (k!='ProfileDateTime') ).map( k => tags[k] );
+	exif_dates = exif_dates.map( t => new Date(t.year,t.month-1,t.day,t.hour,t.minute,t.second,t.millis) );
+	self.min_exif_date = new common.EXIFDate(new Date( Math.min(...exif_dates) ) );
 	self._initialize_storage_fields(callback);
       }).catch( (err) => {
 	common.log(2,"Cannot read EXIF info of '"+self.path+"' ("+err+")");

@@ -15,22 +15,25 @@ function help() {
 	      "    --photos       - reads '"+common.photosCache+"'\n"+
 	      "'action' can be one of:\n"+
 	      "    select:\n"+
-	      "        --where=oid      - specifies the object ID to show. If omitted then all objects are shown\n"+
+	      "        --where=WHERE    - defines which objects to show. Takes the form:\n"+
+	      "                           key=pattern  - selects the objects where 'key' matches RE 'pattern'\n"+
+	      "                           If omitted then all objects are shown. If specified several times then\n"+
+	      "                           the conditions are all joined by AND\n"+
 	      "        --KEY            - for each object on the cache print the value of the key identified by 'key'\n"+
 	      "                           Can be repeated several times. If no keys are given then all values are shown\n"+
 	      "        EXAMPLE: --select --title --id\n"+
 	      "    update:\n"+
-	      "        --where=oid      - specifies the object ID to update. If omitted then all objects are updated\n"+
+	      "        --where=WHERE    - defines which objects to update. If omitted then all objects are updated\n"+
 	      "        --KEY=command    - replaces the value of each property identifiy by 'key' with SED like substitute command\n"+
 	      "                           Can be repeated several times\n"+
-	      "        --fromimage=file - If --images and --where are BOTH provided then replaces the cache value with info from given file\n"+
+	      "        --from_path      - If --images is provided then replaces the cache value with info re-read from image path\n"+
 	      "        EXAMPLE: --update '--title=/^(.+)_mov$/$1.mov/i'\n"+
 	      "    delete:\n"+
-	      "        --where=oid      - specifies the object ID to delete. REQUIRED\n"+
+	      "        --where=WHERE     - defines which objects to delete. REQUIRED\n"+
 	      "        EXAMPLE: --delete --oid=1234\n"+
 	      "    readfile:\n"+
-	      "        --where=path     - reads the file from file system and dumps its as a cache item\n"+
-	     "         EXAMPLE  --readfile --where=/a/b/c/movie.mov\n");
+	      "        --readfile=path  - reads the file from file system and dumps its as a cache item\n"+
+  	      "         EXAMPLE  --readfile=/a/b/c/movie.mov\n");
 }
 
 function _save_cache( cachefile, cache ) {
@@ -60,7 +63,7 @@ function _get_cmd_keys() {
     'update',
     'delete',
     'readfile',
-    'fromimage',
+    'from_path',
   ];
   return Object.keys(common.argv).filter( key => _RESERVED_CMDLINE_KEYS.indexOf(key)<0 );
 }
@@ -73,16 +76,31 @@ function _get_image_file( path ) {
   deasync.loopWhile(function() { return !done; });
   return imageFile;
 }
+function _parse_where() {
+  if( !common.argv.hasOwnProperty('where') ) {
+    return (key,value) => { return true; };
+  } 
+  let keys_and_REs = ((common.argv.where instanceof Array) ? common.argv.where : [common.argv.where]).map( where => {
+    let where_matches = where.match(/^([^=]+)=(.+)$/);
+    if( !where_matches ) {
+      console.log("Where '"+where+"' is not in the form key=value. Skipping it.");
+      return undefined;
+    }
+    return {key:where_matches[1],'re':new RegExp(where_matches[2],"i")};
+  });
+  return (key,value) => { return keys_and_REs.every( kr => (kr==undefined) || (value.hasOwnProperty(kr.key) && kr.re.test(value[kr.key])) ) };
+}
 function select( cachefile, cache ) {  
   let cmd_keys = _get_cmd_keys();
-  for( let oid in cache ) {
-    let object = cache[oid];
-    if( !common.argv.hasOwnProperty('where') || (common.argv['where']==oid) ) {
+  let where    = _parse_where();
+  for( let key in cache ) {
+    let object = cache[key];
+    if( where(key,object) ) { 
       if( cmd_keys.length==0 ) {
 	console.log(object);
       }
       else {
-	console.log(oid+":"+_get_cmd_keys().map( k=>object[k] ).join(";"));
+	console.log(cmd_keys.map( k=>object[k] ).join(";"));
       }
     }
   }
@@ -94,48 +112,61 @@ function update( cachefile, cache ) {
     let sed_cmd   = common.argv[key];
     let sed_parts = sed_cmd.split(sed_cmd[0]);
     if( (sed_parts.length!=4) || (sed_parts[0]!='') ) {
-      console.log("'"+sed_cmd+" does not look like a SED substitute command. Ignoring it for key '"+key+"'");
+      console.log("'"+sed_cmd+" does not look like a SED substitute command. Using '"+sed_cmd+"' as new value for key '"+key+"'");
+      SEDs[key] = {
+	value : sed_cmd
+      };
     }
-    SEDs[key] = {
-      match   : new RegExp(sed_parts[1],sed_parts[3]),
-      replace : sed_parts[2]
-    };
+    else {
+      SEDs[key] = {
+	match   : new RegExp(sed_parts[1],sed_parts[3]),
+	replace : sed_parts[2]
+      };
+    }
   });
   
-  let values_updated = 0;
-  for( let oid in cache ) {
-    if( !common.argv.hasOwnProperty('where') || (common.argv['where']==oid) ) {
-      if( common.argv.hasOwnProperty('images') && common.argv.hasOwnProperty('fromimage') ) {
-	let imageFile = _get_image_file(common.argv.fromimage);
+  let where           = _parse_where();
+  let values_updated  = 0;
+  let records_updated = 0;
+  for( let key in cache ) {
+    let object = cache[key];
+    if( where(key,object) ) {
+      if( common.argv.hasOwnProperty('images') && common.argv.hasOwnProperty('from_path') ) {
+	let imageFile = _get_image_file(object.path);
+	//console.log("Re-reading from "+object.path+",timestamp="+imageFile.timestamp);
 	values_updated += Object.values(imageFile).length;
-	delete cache[oid];
+	records_updated++;
+	delete cache[key];
 	cache[imageFile.id] = imageFile;
       }
       else {
-	let object = cache[oid];
-	for( let key in SEDs ) {
-	  if( object.hasOwnProperty(key) ) {
-	    let value = object[key].replace(SEDs[key].match,SEDs[key].replace);
-	    if( value!=object[key] ) {
-	      common.log(2,"In '"+oid+"' updating '"+key+"' from '"+object[key]+"' to '"+value+"'");
-	      object[key] = value;
+	let got_change = false;
+	for( let ndx in SEDs ) {
+	  if( object.hasOwnProperty(ndx) ) {
+	    let value = SEDs[ndx].hasOwnProperty('value') ? SEDs[ndx].value : object[ndx].replace(SEDs[ndx].match,SEDs[ndx].replace);
+	    if( value!=object[ndx] ) {
+	      common.log(2,"In '"+key+"' updating '"+ndx+"' from '"+object[ndx]+"' to '"+value+"'");
+	      object[ndx] = value;
 	      values_updated++;
-	      if( key=='id' ) {
-		delete cache[oid];
+	      if( ndx=='id' ) {
+		delete cache[key];
 		cache[value] = object;
 	      }
+	      got_change = true;
 	    }
 	    else {
-	      common.log(2,"In '"+oid+"' value of '"+key+"' did not change from '"+object[key]+"'");
+	      common.log(2,"In '"+key+"' value of '"+ndx+"' did not change from '"+object[ndx]+"'");
 	    }
 	  }
 	}
+	if( got_change )
+	  records_updated++;
       }
     }
   }
 
   if( values_updated>0 ) {
-    console.log("Updating "+values_updated+" values: "+_save_cache(cachefile,cache));
+    console.log("Updating "+values_updated+" values in "+records_updated+" records: "+_save_cache(cachefile,cache));
   }
   else {
     console.log("No changes to save");
@@ -144,10 +175,11 @@ function update( cachefile, cache ) {
 }
 function delete_( cachefile, cache ) {
   
+  let where           = _parse_where();
   let records_deleted = 0;
-  for( let oid in cache ) {
-    if( common.argv['where']==oid ) {
-      delete cache[oid];
+  for( let key in cache ) {
+    if( where(key,cache[key]) ) {
+      delete cache[key];
       records_deleted++;
     }
   }
@@ -170,7 +202,7 @@ let cachefile = (common.argv.hasOwnProperty('images') ? common.imagesCache :
 		  (common.argv.hasOwnProperty('photos') ? common.photosCache : 'n/a'));
 let autoprefix = (cachefile.indexOf("/")==0 || cachefile.indexOf("./")==0) ? "" : "./";
 try {
-  console.log("Reading from '"+cachefile+"'");
+  common.log(4,"Reading from '"+cachefile+"'");
   let cache = require(autoprefix+cachefile);
   try {
     if( common.argv['select'] ) {

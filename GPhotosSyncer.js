@@ -115,13 +115,11 @@ const _ACTIONS = [
       if( i.closest_match ) {
 	console.log(i.id+" => "+(new common.EXIFDate(i.timestamp)).toEXIFString()+","+i.path+",closest is "+(new common.EXIFDate(i.closest_match.timestamp)).toEXIFString()+".\nTry:\n"+
 		    "/usr/bin/exiftool '-AllDates="+(new common.EXIFDate(i.closest_match.timestamp)).toEXIFString()+"' '"+i.path+"'\n"+
-		    process.argv[0]+" PatchStorage.js "+
-		    "'--storagefile="+common.imagesCache+"' "+
-		    "'--oid="+i.id+"' "+
-		    "'--min_exif_date="+i.closest_match.timestamp.toISOString()+"' "+
-		    "'--timestamp="+i.closest_match.timestamp.toISOString()+"' "+
-		    "'--id="+i.closest_match.id+"'"
-		   );
+		    process.argv[0]+" CacheTool.js "+
+		    "--images "+
+		    "--update "+
+		    "'--where=id=^"+i.id+"$' "+
+		    "--from_path");
       }
       else {
 	console.log(i.id+" => "+(new common.EXIFDate(i.timestamp)).toEXIFString()+","+i.path+", this image DOES NOT HAVE CLOSEST PHOTO");
