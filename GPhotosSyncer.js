@@ -126,6 +126,16 @@ const _ACTIONS = [
       }
     });
   }),
+  new Action("images_checkExifInfoYear=year","reads images of given year and makes sure that their path location matches their EXIF timestamps",true,false,function(images,photos,year) {
+    try {
+      let imageFolder = new Images.ImageFolder(common.imagesRoot+"/"+year);
+      imageFolder.read_file_system();
+      imageFolder.check_exif_locations();
+    }
+    catch( err ) {
+      console.log("Exception from checking images ("+err+")");
+    }
+  }),
   new Action("images_count","shows the count of images",true,false,function(images,photos) {
     console.log(images.length);
   }),

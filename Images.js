@@ -6,6 +6,7 @@
 const fs            = require('fs');
 const os            = require('os')
 const async         = require('async');
+const deasync       = require('deasync');
 const child_process = require('child_process');
 
 const common        = require('./common');
@@ -218,6 +219,13 @@ class ImageFile extends ImageObject {
     return Math.abs(this.timestamp.valueOf()-dt.valueOf())<=(this.max_discrepancy_minutes*60*1000);
   }
   check_exif_locations() {
+    if( this.min_exif_date===undefined ) {
+      let done = false;
+      this.read_exif_info( (err,result) => {
+	done = true;
+      });
+      deasync.loopWhile( () => !done );
+    }
     // Make sure EXIF timestamps are right
     let default_answer='y',result;
     if( !this.does_date_match(this.min_exif_date) ) {
@@ -245,7 +253,7 @@ class ImageFile extends ImageObject {
 	  this.path_parts.tail;
       if( this.path!=proposed_path ) {
 	default_answer = common.get_answer(
-	  "File '"+this.path+"' needs to be moved to '"+proposed_path+"'. Do it?",
+	  "File '"+this.path+"' has ts '"+this.timestamp.toEXIFString()+"' and needs to be moved to '"+proposed_path+"'. Do it?",
 	  default_answer);
 	if( default_answer.toLowerCase()=='y' ) {
 	  if( (result=this.move_to(proposed_path))!='' ) {
@@ -272,6 +280,9 @@ class ImageFolder extends ImageObject {
     });
   }
   check_exif_locations() {
+    if( (this.folders==undefined) || (this.files==undefined) ) {
+      this.read_file_system();
+    }
     this.files.forEach( (fl) => {
       fl.check_exif_locations();
     });
