@@ -154,9 +154,11 @@ class Picasa {
   get_photos_by_query( album, query, photos, callback ) {
     common.log(1,"Getting photos by query '"+(query?query:'n/a')+"' of album '"+album.title+"'");
     let all_pages_are_loaded = false;
-    let start_index = 1;
-    let max_results = 1000;
-    let self = this;
+    let start_index          = 1;
+    let max_results          = 1000;
+    let max_number_of_503s   = 5;
+    let number_of_503s       = 0;
+    let self                 = this;
     async.whilst(
       () => {
 	return !all_pages_are_loaded;
@@ -189,17 +191,32 @@ class Picasa {
 	    if( accessTokenParams['max-results']>1 ) {
 	      // Picasa does not let read much past around 11k photos returning HTTP 400. But what happens if we start
 	      // reducing the number of results, perhaps it will get us past the 11k limit a little bit further?
+	      // (NOTE: I have never seen it helping)
 	      max_results = Math.floor(max_results/2);
 	      common.log(1,"Halving the number of max results to "+max_results+" for query '"+query+"',start_index="+start_index);
 	      callback(null,photos);
 	    }
 	    else {
+	      if( photos.size<album.num_photos ) {
+		common.log(1,"After all retries we got only "+photos.size+" photos out of "+album.num_photos+" in album '"+album.title+"' possible :(");
+	      }
 	      all_pages_are_loaded = true;
 	      callback(null,photos);
 	    }
 	  }
 	  else if( (response.statusCode<200) || (response.statusCode>226) ) {
-	    callback(Error("Got response code "+response.statusCode+",response body "+response.body));
+	    if( (response.statusCode=503) && (response.body.toLowerCase().indexOf("try again later")>=0) ) {
+	      if( ++number_of_503s<max_number_of_503s ) {
+		common.log(1,"Got 'retry later' error, total number of 503s="+number_of_503s);
+		callback(null,photos);
+	      }
+	      else {
+		callback(Error("Got "+number_of_503s+" 'retry later' errors, bailing out"));
+	      }
+	    }
+	    else {
+	      callback(Error("Got response code "+response.statusCode+",response body "+response.body));
+	    }
 	  }
 	  else if (body.length < 1) {
 	    callback(Error("Body length is too short"));
@@ -208,7 +225,10 @@ class Picasa {
 	    const feed        = JSON.parse(body).feed;
 	    const page_result = feed.entry;
 	    if( !page_result ) {
-	      common.log(1,"No Entry in "+JSON.stringify(feed));
+	      let num_photos = self.constructor._check_param(feed['gphoto$numphotos']);
+	      if( num_photos>0 ) {
+		common.log(1,"No Entry in album '"+self.constructor._check_param(feed['title'])+"' although it has "+num_photos+" photos, feed="+JSON.stringify(feed));
+	      }
 	      all_pages_are_loaded = true;
 	    }
 	    else {
@@ -237,7 +257,7 @@ class Picasa {
       this.get_photos_by_query(album,undefined,photos,callback);
     }
     else {
-      common.log(2,"there are "+album.num_photos+" in album '"+album.title+"', doing it the hard way");
+      common.log(2,"there are "+album.num_photos+" photos in album '"+album.title+"', trying to get the photos by subqueries");
       // This album has more than 10000 photos and Picasa API has a problems with retrieving
       // those photos that are after 10000. For this we "query" the ablum in an attempts to 
       // the large volume of photos into small pieces each one is less than 10000
@@ -253,9 +273,9 @@ class Picasa {
           self.get_photos_by_query(album,query,photos,callback);
 	},
 	( err ) => {
-        if( err ) {
-          callback(Error("Error in running queries ("+err+")"),photos);
-        }
+          if( err ) {
+            callback(Error("Error in running queries ("+err+")"),photos);
+          }
           else {
             callback(null,photos);
           }
