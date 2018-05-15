@@ -5,6 +5,7 @@
   "description": "CLI Tool to manage photos and vides in GPhotos library",
   "dependencies": {
     "deasync": "^0.1.10",
+    "readline-sync": "^1.4.9",
     "async": "^2.5.0",
     "google-auth-library": "^0.10.0",
     "googleapis": "^20.0.0",

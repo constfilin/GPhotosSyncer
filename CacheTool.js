@@ -73,7 +73,7 @@ function _get_image_file( path ) {
   imageFile.read_exif_info( ( err, result ) => {
     done = true;
   });
-  deasync.loopWhile(function() { return !done; });
+  deasync.loopWhile( () => !done );
   return imageFile;
 }
 function _parse_where() {

@@ -4,7 +4,6 @@
 // module globals
 /////////////////////////////////////////////////////////////////
 const util              = require('util');
-const deasync           = require('deasync');
 const exiftool_vendored = require('exiftool-vendored');  
 
 /////////////////////////////////////////////////////////////////
@@ -109,18 +108,7 @@ module.exports = {
     return result;
   },
   get_answer( prompt, default_answer ) {
-    let rl = require('readline').createInterface({
-      input : process.stdin,
-      output: process.stdout
-    });	  
-    let result = undefined;
-    rl.question(prompt+' (default is '+default_answer+'): ',function( answer ) {
-      rl.close();
-      result = answer;
-    });
-    deasync.loopWhile( function() {
-      return result===undefined;
-    });
+    let result = require('readline-sync').question(prompt+' (default is '+default_answer+'): ');
     return (result=='') ? default_answer : result;    
   },
   subtract_items( a1, a2 ) {
