@@ -18,6 +18,9 @@ class Action {
         this.needs_photos = needs_photos;
         this.proc         = proc;
     }
+    async call( imagesPromise, photosPromise, n ) {
+        return (this.proc.bind(this))(await imagesPromise,await photosPromise,n);
+    }
 }
 const _ACTIONS = [
     new Action("// Actions on gphotos"),
@@ -47,7 +50,7 @@ const _ACTIONS = [
     new Action("gphotos_mismatchingYear=year","shows GPhotos photos timestamped to given year and with title mismatching the year",false,true,function(images,photos,year) {
         let re   = new RegExp("^"+year+"_.+","i");
         photos.filter( p => (p.timestamp.getFullYear()==year) && (p.title.match(re)==null) ).forEach( (p) => {
-	          console.log(p.id+" => "+p.title);
+            console.log(p.id+" => "+p.title);
         });
     }),
     new Action("gphotos_mismatchingYears","shows GPhotos photos whose title mismatch the image timestamp",false,true,function(images,photos) {
@@ -61,10 +64,10 @@ const _ACTIONS = [
             images.filter( i => { i.title=i.gphotos_path; return (i.timestamp.getFullYear()==year); } )
         ).forEach( p => {
             if( p.closest_match ) {
-	              console.log(p.id+" => "+p.timestamp+","+p.content.src+", closest is "+p.closest_match.path+" with timestamp="+p.closest_match.timestamp);
+                console.log(p.id+" => "+p.timestamp+","+p.content.src+", closest is "+p.closest_match.path+" with timestamp="+p.closest_match.timestamp);
             }
             else {
-	              console.log(p.id+" => "+p.timestamp+","+p.content.src+", this photo DOES NOT HAVE CLOSEST IMAGE");
+                console.log(p.id+" => "+p.timestamp+","+p.content.src+", this photo DOES NOT HAVE CLOSEST IMAGE");
             }
         });
     }),
@@ -112,16 +115,16 @@ const _ACTIONS = [
             photos.filter( p => (p.timestamp.getFullYear()==year) )
         ).forEach( i => {
             if( i.closest_match ) {
-	              console.log(i.id+" => "+(new common.EXIFDate(i.timestamp)).toEXIFString()+","+i.path+",closest is "+(new common.EXIFDate(i.closest_match.timestamp)).toEXIFString()+".\nTry:\n"+
-		                        "/usr/bin/exiftool '-AllDates="+(new common.EXIFDate(i.closest_match.timestamp)).toEXIFString()+"' '"+i.path+"'\n"+
-		                        process.argv[0]+" CacheTool.js "+
-		                        "--images "+
-		                        "--update "+
-		                        "'--where=id=^"+i.id+"$' "+
-		                        "--from_path");
+                console.log(i.id+" => "+(new common.EXIFDate(i.timestamp)).toEXIFString()+","+i.path+",closest is "+(new common.EXIFDate(i.closest_match.timestamp)).toEXIFString()+".\nTry:\n"+
+                            "/usr/bin/exiftool '-AllDates="+(new common.EXIFDate(i.closest_match.timestamp)).toEXIFString()+"' '"+i.path+"'\n"+
+                            process.argv[0]+" CacheTool.js "+
+                            "--images "+
+                            "--update "+
+                            "'--where=id=^"+i.id+"$' "+
+                            "--from_path");
             }
             else {
-	              console.log(i.id+" => "+(new common.EXIFDate(i.timestamp)).toEXIFString()+","+i.path+", this image DOES NOT HAVE CLOSEST PHOTO");
+                console.log(i.id+" => "+(new common.EXIFDate(i.timestamp)).toEXIFString()+","+i.path+", this image DOES NOT HAVE CLOSEST PHOTO");
             }
         });
     }),
@@ -156,7 +159,7 @@ const _ACTIONS = [
         let images_by_years = images.toHash(i => i.timestamp.getFullYear(),true);
         Object.keys(photos_by_years).reduce( (accumulator,year) => {
             if( !accumulator.includes(year) )
-	              accumulator.push(year);
+                accumulator.push(year);
             return accumulator;
         },Object.keys(images_by_years)).sort().forEach( year => {
             let photos_count = (photos_by_years.hasOwnProperty(year)?photos_by_years[year].length:0);
@@ -176,10 +179,10 @@ function get_images( storage_file ) {
         return resolve(new Storage(require(storage_file)));
     }).catch( (err) => {
         let images = new Storage();
-	      return (new Images.ImageFolder(common.imagesRoot)).getImages(images).then( () => {
-	          common.exiftool.end();
-	          common.log(1,"Got "+images.size+" images, writing to "+storage_file);
-	          fs.writeFileSync(storage_file,JSON.stringify(images.storage));
+        return (new Images.ImageFolder(common.imagesRoot)).getImages(images).then( () => {
+            common.exiftool.end();
+            common.log(1,"Got "+images.size+" images, writing to "+storage_file);
+            fs.writeFileSync(storage_file,JSON.stringify(images.storage));
             return images;
         });
     });
@@ -188,18 +191,15 @@ function get_photos( storage_file ) {
     return new Promise( (resolve,reject) => {
         return resolve(new Storage(require(storage_file)));
     }).catch( (err) => {
-	      const photos  = new Storage();
+        const photos  = new Storage();
         const gphotos = new GPhotos();
         return gphotos.login().then( () => {
             console.log("Successfully logged in");
-            return gphotos.getAlbums();
-        }).then( (albums) => {
-            console.log("Got "+albums.length+" albums");
-            return Promise.all(albums.map(a => gphotos.getPhotos(a,photos)));
-        }).then( (whatever) => {
-	          common.log(1,"Got "+photos.size+" photos, writing to "+storage_file);
-            fs.writeFileSync(storage_file,JSON.stringify(photos.storage));
-            return photos;
+            return gphotos.getPhotos(photos).then( (whatever) => {
+                common.log(1,"Got "+photos.size+" photos, writing to "+storage_file);
+                fs.writeFileSync(storage_file,JSON.stringify(photos.storage));
+                return photos;
+            });
         });
     });
 }
@@ -218,19 +218,10 @@ if( valid_actions.length ) {
         let photosPromise = a.needs_photos ? (photos ? photos : get_photos(common.photosCache).then( (photos_) => {
             return photos = Object.values(photos_.storage);
         }).catch( (err) => {
-            console.log(err);
             common.log(1,"There was an error getting photos ("+err+")");
         })) : undefined;
-        Promise.all([imagesPromise,photosPromise]).then( (values) => {
-            // values here is [images,photos] but we are not using them
-	          try {
-	              (a.proc.bind(a))(images,photos,Number(common.argv[a.name_parts[0]]));
-	          }
-	          catch( err ) {
-	              common.log(1,"Exception from handler "+a.name+" ("+err+")");
-	          }
-        }).catch( (err) => {
-	          common.log(1,"There were errors ("+err+")");
+        a.call(imagesPromise,photosPromise,Number(common.argv[a.name_parts[0]])).catch( (err) => {
+            common.log(1,"Exception from handler "+a.name+" ("+err+")");
         });
     });
 }
