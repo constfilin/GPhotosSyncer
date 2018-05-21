@@ -7,10 +7,8 @@ API access to Google Photos was attempted by three different ways:
 * [Picasa API](https://developers.google.com/gdata/docs/2.0/basics) but it has problems if you attempt to 
   read more than 10000 photos from an ablum. Since Picasa API apparently enumerates photos from
   most recent to least recent, this means that you cannot read the oldest photos in Google Photos. To
-  work this around I just had to create a special album where I added all the oldest photos. 
-* [Google Photos API](https://developers.google.com/photos/library/guides/get-started). It came out beginning of May 2018, promises to solve the problem for good, however Google first has to fix [this issue](https://issuetracker.google.com/issues/79656863).
-
-The current version of GPhotosSyncer uses [Picasa API](https://developers.google.com/gdata/docs/2.0/basics)
+  work this around I just had to create a special album where I added all the oldest photos. This version is currently implemented in [master branch](https://github.com/constfilin/GPhotosSyncer/tree/master)
+* [Google Photos API](https://developers.google.com/photos/library/guides/get-started). It came out beginning of May 2018, promises to solve the problem for good (however see [this issue](https://issuetracker.google.com/issues/79656863)). This version is currently implemented in [promises_and_gphotos_api branch](https://github.com/constfilin/GPhotosSyncer/tree/promises_and_gphotos_api)
 
 Please run **GPhotosSyncer.js** with **--help** command line option to see what other command line 
 options you can give to it.
