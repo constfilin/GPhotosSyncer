@@ -20,3 +20,8 @@ then the tool attempts to read these using APIs. Since such reading is slow, the
 **images** or **photos** in files **./allimages.json** and **./allphotos.json** respectively. Subsequent
 attempts to access images or photos de-serialize from these files. If you need to re-read images or
 photos again, simply wipe those files out.
+
+# TODO
+* Re-organize the sources to **src**, **tests**...
+* Add auto tests
+* Add integration with CI/CD (see [Travis CI](https://travis-ci.org))
