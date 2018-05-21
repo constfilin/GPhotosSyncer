@@ -1,5 +1,4 @@
 const fs       = require('fs');
-const exiftool = require('exiftool-vendored').exiftool;
 const deasync  = require('deasync');
 
 const common   = require('./common');

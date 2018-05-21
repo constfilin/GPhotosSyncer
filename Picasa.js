@@ -104,7 +104,7 @@ class PicasaAlbumPhotosQuery {
                     'GData-Version': '2'
                 }
             };
-            console.log(1,"Sending request "+JSON.stringify(requestOptions));
+            common.log(1,"Sending request "+JSON.stringify(requestOptions));
             request.get(requestOptions,(err,response,body) => {
                 if( err ) {
                     // TODO: automatically handle refresh of access_token is the old one has expired
@@ -195,7 +195,7 @@ class Picasa {
                     else {
                         result.credentials = token;
                         try {
-                            console.log("writing '"+JSON.stringify(token)+"' to '"+credentials_storage_path+"'");
+                            common.log(1,"writing '"+JSON.stringify(token)+"' to '"+credentials_storage_path+"'");
                             fs.writeFileSync(credentials_storage_path,JSON.stringify(result.credentials));
                             return resolve(result);
                         }

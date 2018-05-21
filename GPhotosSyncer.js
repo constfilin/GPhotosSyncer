@@ -6,7 +6,7 @@ const fs     = require('fs');
 
 const common  = require('./common');
 const Storage = require('./Storage');
-const GPhotos = require('./Picasa');
+const GPhotos = require('./GPhotos');
 const Images  = require('./Images');
 
 class Action {
@@ -180,7 +180,6 @@ function get_images( storage_file ) {
     }).catch( (err) => {
         let images = new Storage();
         return (new Images.ImageFolder(common.imagesRoot)).getImages(images).then( () => {
-            common.exiftool.end();
             common.log(1,"Got "+images.size+" images, writing to "+storage_file);
             fs.writeFileSync(storage_file,JSON.stringify(images.storage));
             return images;

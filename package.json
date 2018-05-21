@@ -1,16 +1,15 @@
 {
-  "name": "GPhotosSyncer",
-  "private": true,
-  "version": "0.0.0",
-  "description": "CLI Tool to manage photos and vides in GPhotos library",
-  "dependencies": {
-    "deasync": "^0.1.10",
-    "readline-sync": "^1.4.9",
-    "async": "^2.5.0",
-    "google-auth-library": "^0.10.0",
-    "googleapis": "^20.0.0",
-    "minimist": "^1.2.0",
-    "request": "^2.81.0",
-    "exiftool-vendored": "^4.2.0"
-  }
+    "name": "GPhotosSyncer",
+    "private": true,
+    "version": "0.0.0",
+    "description": "CLI Tool to manage photos and videos in GPhotos library",
+    "dependencies": {
+        "deasync": "^0.1.10",
+        "readline-sync": "^1.4.9",
+        "google-auth-library": "^0.10.0",
+        "googleapis": "^20.0.0",
+        "minimist": "^1.2.0",
+        "request": "^2.81.0",
+        "tmp" : "^0.0.33"
+    }
 }
