@@ -115,8 +115,8 @@ const _ACTIONS = [
             photos.filter( p => (p.timestamp.getFullYear()==year) )
         ).forEach( i => {
             if( i.closest_match ) {
-                console.log(i.id+" => "+(new common.EXIFDate(i.timestamp)).toEXIFString()+","+i.path+",closest is "+(new common.EXIFDate(i.closest_match.timestamp)).toEXIFString()+".\nTry:\n"+
-                            "/usr/bin/exiftool '-AllDates="+(new common.EXIFDate(i.closest_match.timestamp)).toEXIFString()+"' '"+i.path+"'\n"+
+                console.log(i.id+" => "+(new Date(i.timestamp)).toEXIFString()+","+i.path+",closest is "+(new Date(i.closest_match.timestamp)).toEXIFString()+".\nTry:\n"+
+                            "/usr/bin/exiftool '-AllDates="+(new Date(i.closest_match.timestamp)).toEXIFString()+"' '"+i.path+"'\n"+
                             process.argv[0]+" CacheTool.js "+
                             "--images "+
                             "--update "+
@@ -124,15 +124,16 @@ const _ACTIONS = [
                             "--from_path");
             }
             else {
-                console.log(i.id+" => "+(new common.EXIFDate(i.timestamp)).toEXIFString()+","+i.path+", this image DOES NOT HAVE CLOSEST PHOTO");
+                console.log(i.id+" => "+(new Date(i.timestamp)).toEXIFString()+","+i.path+", this image DOES NOT HAVE CLOSEST PHOTO");
             }
         });
     }),
     new Action("images_checkExifInfoYear=year","reads images of given year and makes sure that their path location matches their EXIF timestamps",true,false,function(images,photos,year) {
         try {
             let imageFolder = new Images.ImageFolder(common.imagesRoot+"/"+year);
-            imageFolder.read_file_system();
-            imageFolder.check_exif_locations();
+            imageFolder.read(new Storage()).then( () => {
+                imageFolder.check_exif_locations();
+            });
         }
         catch( err ) {
             console.log("Exception from checking images ("+err+")");
@@ -174,32 +175,18 @@ const _ACTIONS = [
 /////////////////////////////////////////////////////////////////
 // functions
 /////////////////////////////////////////////////////////////////
-function get_images( storage_file ) {
+function get_storage( storage_file, constructor_, arg1, arg2, arg3 ) {
     return new Promise( (resolve,reject) => {
-        return resolve(new Storage(require(storage_file)));
+        resolve(new Storage(require(storage_file)));
     }).catch( (err) => {
-        let images = new Storage();
-        return (new Images.ImageFolder(common.imagesRoot)).getImages(images).then( () => {
-            common.log(1,"Got "+images.size+" images, writing to "+storage_file);
-            fs.writeFileSync(storage_file,JSON.stringify(images.storage));
-            return images;
+        return (new constructor_(arg1,arg2,arg3)).read(new Storage()).then( (storage) => {
+            common.log(1,"Got "+storage.size+" items, writing to "+storage_file);
+            fs.writeFileSync(storage_file,JSON.stringify(storage.storage));
+            return storage;
         });
-    });
-}
-function get_photos( storage_file ) {
-    return new Promise( (resolve,reject) => {
-        return resolve(new Storage(require(storage_file)));
-    }).catch( (err) => {
-        const photos  = new Storage();
-        const gphotos = new GPhotos();
-        return gphotos.login().then( () => {
-            console.log("Successfully logged in");
-            return gphotos.getPhotos(photos).then( (whatever) => {
-                common.log(1,"Got "+photos.size+" photos, writing to "+storage_file);
-                fs.writeFileSync(storage_file,JSON.stringify(photos.storage));
-                return photos;
-            });
-        });
+    }).then( (storage) => {
+        // Just return the JSON object itself as an array of items
+        return Object.values(storage.storage);
     });
 }
 /////////////////////////////////////////////////////////////////
@@ -209,13 +196,13 @@ let valid_actions = _ACTIONS.filter( a => common.argv.hasOwnProperty(a.name_part
 if( valid_actions.length ) {
     let images,photos;
     valid_actions.forEach( (a) => {
-        let imagesPromise = a.needs_images ? (images ? images : get_images(common.imagesCache).then( (images_) => {
-            return images = Object.values(images_.storage);
+        let imagesPromise = a.needs_images ? (images ? images : get_storage(common.imagesCache,Images.ImageFolder,common.imagesRoot).then( (storage) => {
+            return images = storage;
         }).catch( (err) => {
             common.log(1,"There was an error getting images ("+err+")");
         })) : undefined;
-        let photosPromise = a.needs_photos ? (photos ? photos : get_photos(common.photosCache).then( (photos_) => {
-            return photos = Object.values(photos_.storage);
+        let photosPromise = a.needs_photos ? (photos ? photos : get_storage(common.photosCache,GPhotos).then( (storage) => {
+            return photos = storage;
         }).catch( (err) => {
             common.log(1,"There was an error getting photos ("+err+")");
         })) : undefined;

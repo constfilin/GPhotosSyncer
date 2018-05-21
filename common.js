@@ -6,33 +6,7 @@
 const util = require('util');
 
 /////////////////////////////////////////////////////////////////
-// classes
-/////////////////////////////////////////////////////////////////
-class EXIFDate extends Date {
-    constructor( year, month, date, hour, minute, second ) {
-        if( year instanceof Date ) {
-            super(year);
-        }
-        else {
-            super(year,month,date,hour,minute,second);
-        }
-    }
-    toEXIFString() {
-        let common = module.exports;
-        return this.getFullYear()+":"+common.pad_number(this.getMonth()+1,2)+":"+common.pad_number(this.getDate(),2)+" "+
-            common.pad_number(this.getHours(),2)+":"+common.pad_number(this.getMinutes(),2)+":"+common.pad_number(this.getSeconds(),2);
-    }
-    static fromEXIFString( es ) {
-        let m;
-        if( (m=String(es).match(/^([0-9]+):([0-9]{2}):([0-9]{2})[ \t]+([0-9]{2}):([0-9]{2}):([0-9]{2}).*$/i)) ) {
-            if( Number(m[2])==0 ) m[2] = 6; // If month is set to 0 incorrectly then default it to June
-            return new EXIFDate(Number(m[1]),Number(m[2])-1,Number(m[3]),Number(m[4]),Number(m[5]),Number(m[6]));
-        }
-        return new EXIFDate('Invalid Date');
-    }
-}
-/////////////////////////////////////////////////////////////////
-// 
+// addiong to classes
 /////////////////////////////////////////////////////////////////
 Array.prototype.toHash = function( hashing_proc, put_same_keys_in_array ) {
     let result  = {};
@@ -56,6 +30,19 @@ Array.prototype.toHash = function( hashing_proc, put_same_keys_in_array ) {
     });
     return result;
 }
+Date.prototype.toEXIFString = function() {
+    let common = module.exports;
+    return this.getFullYear()+":"+common.pad_number(this.getMonth()+1,2)+":"+common.pad_number(this.getDate(),2)+" "+
+        common.pad_number(this.getHours(),2)+":"+common.pad_number(this.getMinutes(),2)+":"+common.pad_number(this.getSeconds(),2);
+}
+Date.fromEXIFString = function( es ) {
+    let m;
+    if( (m=String(es).match(/^([0-9]+):([0-9]{2}):([0-9]{2})[ \t]+([0-9]{2}):([0-9]{2}):([0-9]{2}).*$/i)) ) {
+	      if( Number(m[2])==0 ) m[2] = 6; // If month is set to 0 incorrectly then default it to June
+        return new Date(Number(m[1]),Number(m[2])-1,Number(m[3]),Number(m[4]),Number(m[5]),Number(m[6]));
+    }
+    return new Date('Invalid Date');
+}
 /////////////////////////////////////////////////////////////////
 // module exports
 /////////////////////////////////////////////////////////////////
@@ -63,7 +50,6 @@ module.exports = {
     imagesRoot        : "/media/cf/Passport500/public/Video",
     imagesCache       : './allimages.json',
     photosCache       : './allphotos.json',
-    'EXIFDate'        : EXIFDate,
     month_names : [
         '',
         'January',
@@ -107,6 +93,28 @@ module.exports = {
     get_answer( prompt, default_answer ) {
         let result = require('readline-sync').question(prompt+' (default is '+default_answer+'): ');
         return (result=='') ? default_answer : result;    
+    },
+    parse_duration( s ) {
+        if( s.indexOf("-")==0 )
+            return 0-module.exports.parse_duration(s.substr(1));
+        const re    = /[0-9]+[dhms]/ig;
+        const parts = s.match(re);
+        if( parts.reduce((accumulator,p) => accumulator+p.length,0)!=s.length )
+            return 0;
+        return parts.reduce((accumulator,p) => {
+            switch( p.substr(-1) ) {
+            case 'd':
+                return accumulator+(24*60*60*1000)*Number(p.substr(0,p.length-1));
+            case 'h':
+                return accumulator+(60*60*1000)*Number(p.substr(0,p.length-1));
+            case 'm':
+                return accumulator+(60*1000)*Number(p.substr(0,p.length-1));
+            case 's':
+                return accumulator+(1000)*Number(p.substr(0,p.length-1));
+            default:
+                return accumulator;
+            }
+        },0);    
     },
     subtract_items( a1, a2 ) {
         let result = [];

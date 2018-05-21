@@ -20,13 +20,12 @@ const GPHOTOS_SCOPE         = 'https://www.googleapis.com/auth/photoslibrary.rea
 /////////////////////////////////////////////////////////////////
 // classes
 /////////////////////////////////////////////////////////////////
-class GetPhotosContext {
-    constructor( photos ) {
-        this.photos = photos;
-        let self = this;
+class ReadContext {
+    constructor( storage ) {
+        this.storage = storage;
         this.pages  = new BunchOfPromises();
         this.pages.add(new Promise( (resolve,reject) => {
-            self.last_page_resolve = resolve;
+            this.last_page_resolve = resolve;
         }));
         this.titles = new BunchOfPromises();
     }
@@ -66,15 +65,7 @@ class GPhotos {
             }
         });
     }
-    login() {
-        let credentials = JSON.parse(fs.readFileSync(_CLIENT_SECRETS_PATH));
-        let self = this;
-        return this.get_oauth_client(credentials,GPHOTOS_SCOPE,_CREDENTIALS_DIR+"/gphotos.json").then( (result) => {
-            self.credentials = result.credentials;
-            return self;
-        });
-    }
-    getMediaItemTitlePromise( gpc, mediaItem ) {
+    get_mediaitem_title_promise( context, mediaItem ) {
         const content_disposition = 'content-disposition';
         const cd_re               = /^(?:.*;)?filename=(['"])([^'"]+)\1.*$/i;
         return new Promise( (resolve,reject) => {
@@ -88,11 +79,11 @@ class GPhotos {
                     mediaItem.retryCount = (mediaItem.retryCount||0)+1;
                     if( mediaItem.retryCount<3 ) {
                         common.log(1,"Got error '"+err+" on a media item, retry count is "+mediaItem.retryCount+", retrying...");
-                        gpc.titles.add(this.getMediaItemTitlePromise(gpc,mediaItem));
-                        gpc.titles.resolve(resolve);
+                        context.titles.add(this.get_mediaitem_title_promise(context,mediaItem));
+                        context.titles.resolve(resolve);
                     }
                     else {
-                        gpc.titles.reject(reject,Error("Cannot get head ("+err+")"));
+                        context.titles.reject(reject,Error("Cannot get head ("+err+")"));
                     }
                 }
                 else if( response.headers.hasOwnProperty(content_disposition) ) {
@@ -105,21 +96,21 @@ class GPhotos {
                         delete mediaItem.mediaMetadata.creationTime;
                         delete mediaItem.baseUrl;
                         delete mediaItem.productUrl;
-                        gpc.photos.add(mediaItem.id,mediaItem);
-                        common.log(3,"Context="+gpc+",loaded a title '"+mediaItem.title+"'");
-                        gpc.titles.resolve(resolve);
+                        context.storage.add(mediaItem.id,mediaItem);
+                        common.log(3,"Context="+context+",loaded a title '"+mediaItem.title+"'");
+                        context.titles.resolve(resolve);
                     }
                     else {
-                        gpc.titles.reject(reject,Error(content_disposition+" did not match regular expression"+re));
+                        context.titles.reject(reject,Error(content_disposition+" did not match regular expression"+re));
                     }
                 }
                 else {
-                    gpc.titles.reject(reject,Error("Response headers did not have "+content_disposition));
+                    context.titles.reject(reject,Error("Response headers did not have "+content_disposition));
                 }
             });
         });
     }
-    getPagePromise( gpc, pageToken ) {
+    get_page_promise( context, pageToken ) {
         return new Promise( (resolve,reject) => {
             const accessTokenParams = {
                 'access_token' : this.credentials.access_token
@@ -137,54 +128,66 @@ class GPhotos {
             };
             request.post(requestOptions,(err,response,body) => {
                 if( err ) {
-                    gpc.pages.reject(reject,err);
+                    context.pages.reject(reject,err);
                 }
                 else if( body.error ) {
-                    gpc.pages.reject(reject,Error(body.error.message));
+                    context.pages.reject(reject,Error(body.error.message));
                 }
                 else {
-                    // Once Google fixes https://issuetracker.google.com/issues/79656863 the following statement wil not longer be necessary
+                    // Once Google fixes https://issuetracker.google.com/issues/79656863 the following statement will no longer be necessary
                     body.mediaItems.forEach( mi => {
-                        gpc.titles.add(this.getMediaItemTitlePromise(gpc,mi));
+                        context.titles.add(this.get_mediaitem_title_promise(context,mi));
                     });
-                    common.log(1,"Context="+gpc+",loaded "+body.mediaItems.length+" media items");
+                    common.log(1,"Context="+context+",loaded "+body.mediaItems.length+" media items");
                     if( body.nextPageToken ) {
-                        gpc.pages.add(this.getPagePromise(gpc,body.nextPageToken));
+                        context.pages.add(this.get_page_promise(context,body.nextPageToken));
                     }
                     else {
                         common.log(1,"Resolving the last page promise");
-                        gpc.last_page_resolve();
+                        context.last_page_resolve();
                     }
-                    gpc.pages.resolve(resolve,undefined);
+                    context.pages.resolve(resolve,undefined);
                 }
             });
+        });
+    }
+    login() {
+        if( this.credentials )
+            return Promise.resolve(this);
+        let credentials = JSON.parse(fs.readFileSync(_CLIENT_SECRETS_PATH));
+        return this.get_oauth_client(credentials,GPHOTOS_SCOPE,_CREDENTIALS_DIR+"/gphotos.json").then( (result) => {
+            common.log(1,"Successfully logged to GPhotos");
+            this.credentials = result.credentials;
+            return this;
         });
     }
     getAlbums( albums ) {
-        return new Promise( (resolve,reject) => {
-            const accessTokenParams = {
-                'access_token' : this.credentials.access_token
-            };
-            const requestQuery   = querystring.stringify(accessTokenParams);
-            const requestOptions = {
-                'url'  : 'https://photoslibrary.googleapis.com/v1/albums?'+requestQuery,
-                'json' : true
-            };
-            request.get(requestOptions,(err,response,body) => {
-                if( err ) {
-                    reject(err);
-                }
-                else if( body.hasOwnProperty('albums') ) {
-                    resolve(body.albums);
-                }
-                else {
-                    reject(Error("Body does not have 'albums'"));
-                }
+        return this.login().then( () => {
+            return new Promise( (resolve,reject) => {
+                const accessTokenParams = {
+                    'access_token' : this.credentials.access_token
+                };
+                const requestQuery   = querystring.stringify(accessTokenParams);
+                const requestOptions = {
+                    'url'  : 'https://photoslibrary.googleapis.com/v1/albums?'+requestQuery,
+                    'json' : true
+                };
+                request.get(requestOptions,(err,response,body) => {
+                    if( err ) {
+                        reject(err);
+                    }
+                    else if( body.hasOwnProperty('albums') ) {
+                        resolve(body.albums);
+                    }
+                    else {
+                        reject(Error("Body does not have 'albums'"));
+                    }
+                });
             });
         });
     }
-    getPhotos( photos ) {
-        // Getting photos is not trivial. 
+    read( storage ) {
+        // Reading photos is not trivial. 
         // 
         // We have an unknown number of promises to resolve because the promise to load a page 'mediaItem::search' can produce
         // more pages to load and promises to resolve. Ultimately to resolve all these page promises we have to run code like:
@@ -196,19 +199,23 @@ class GPhotos {
         // The solution was to create a "last page" promise and stick it as an item into the same array array_of_page_promises.
         // This promise gets resolved only when the media returns a page without nextPageToken. This means that there are no
         // more media pages to load and Promise.all(array_of_page_promises) can return to finish loading titles of the media 
-        // items. Creating such a "last page" promise happens inside of GetPhotosContext constructor.
+        // items. Creating such a "last page" promise happens inside of ReadContext constructor.
         //
         // Separately, as pages are loaded, the code creates (due to https://issuetracker.google.com/issues/79656863) promises 
-        // to load titles of the media items. These are put into GetPhotosContext.titles promises and the code waits on all
+        // to load titles of the media items. These are put into ReadContext.titles promises and the code waits on all
         // these title promises before resolving the main "get photos" promise.
-        let gpc = new GetPhotosContext(photos);
-        gpc.pages.add(this.getPagePromise(gpc));
-        return Promise.all(gpc.pages.promises).then( () => {
-            common.log(1,"All pages have been loaded ("+gpc+")");
-            return Promise.all(gpc.titles.promises);
-        }).catch( (err) => {
-            common.log(1,"There was an error loading pages ("+err+")");
-            throw err;
+        return this.login().then( () => {
+            let context = new ReadContext(storage);
+            context.pages.add(this.get_page_promise(context));
+            return Promise.all(context.pages.promises).then( () => {
+                common.log(1,"All pages have been loaded ("+context+")");
+                return Promise.all(context.titles.promises);
+            }).catch( (err) => {
+                common.log(1,"There was an error loading pages ("+err+")");
+                throw err;
+            });
+        }).then( () => {
+            return storage;
         });
     }
 }

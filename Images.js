@@ -8,8 +8,11 @@ const os            = require('os');
 const tmp           = require('tmp');
 const child_process = require('child_process');
 
-const common          = require('./common');
-const BunchOfPromises = require('./BunchOfPromises');
+const common        = require('./common');
+
+let _DEFAULT_SET_EXIF_TIMESTAMP_ANSWER = 'Y';
+let _DEFAULT_UPDATE_FILE_PATH_ANSWER   = '2';
+let _DEFAULT_EXIF_OFFSET_ANSWER        = '';
 
 /////////////////////////////////////////////////////////////////
 // classes
@@ -95,16 +98,16 @@ class ImageFile extends ImageObject {
             this.max_discrepancy_minutes = (365/2)*24*60;
         }
         let year = Number(this.path_parts.year);
-        return new common.EXIFDate(year,month-1,date,12,0,0);
+        return new Date(year,month-1,date,12,0,0);
     }
     guess_date_from_filename( relative_path ) {
         if( !(this.filename_parts=common.match_string(relative_path,
-                                                      /^.+\/[^\/]+(?:_|-)([0-9]{4})([0-9]{2})([0-9]{2})_([0-9]{2})([0-9]{2})([0-9]{2})\.(?:jpe?g|png|mov)$/i,
+                                                      /^.+\/[^\/]+(?:_|-)([0-9]{4})([0-9]{2})([0-9]{2})_([0-9]{2})([0-9]{2})([0-9]{2})\.(?:jpe?g|png|mov|mp4)$/i,
                                                       ['year','month','date','hour','minute','second'])) )
             return undefined;
         // We know the exact timestamp to the seconds. So limit the max discrepancy to 1 minute
-        return new common.EXIFDate(Number(this.filename_parts.year),Number(this.filename_parts.month)-1,Number(this.filename_parts.date),
-                                   Number(this.filename_parts.hour),Number(this.filename_parts.minute),Number(this.filename_parts.second),1);
+        return new Date(Number(this.filename_parts.year),Number(this.filename_parts.month)-1,Number(this.filename_parts.date),
+                        Number(this.filename_parts.hour),Number(this.filename_parts.minute),Number(this.filename_parts.second),1);
     }
     constructor(path,parent) {
         super(path,parent);
@@ -112,7 +115,7 @@ class ImageFile extends ImageObject {
         this.filename_date = this.guess_date_from_filename(this.relative_path);
     }
     set_exif_dates( exif_dates ) {
-        this.min_exif_date = new common.EXIFDate(new Date( Math.min(...exif_dates) ) );
+        this.min_exif_date = new Date( Math.min(...exif_dates) );
         this.timestamp     = this.filename_date || this.min_exif_date || this.path_date || Date.now();
         this.id            = (String(this.timestamp.valueOf())+"_"+this.gphotos_path).toLowerCase();
         return this;
@@ -120,13 +123,16 @@ class ImageFile extends ImageObject {
     names_match( gphotofile ) {
         return this.gphotos_path==gphotofile.name;
     }
-    set_exif_timestamp( exif_timestamp ) {
+    set_exif_timestamp( timestamp ) {
         let exiftool_cmdargs = [
             "ModifyDate",
             "DateTimeOriginal",
-            "CreateDate"
+            "CreateDate",
+            "FirstPhotoDate",
+            "LastPhotoDate"
         ];
-        let cmdline = "/usr/bin/exiftool -quiet "+exiftool_cmdargs.map( a => "-"+a+"='"+exif_timestamp+"'" ).join(" ") +" '"+this.path+"'";
+        common.log(2,"Setting timestamp of '"+this.path+" to '"+timestamp.toEXIFString()+"'");
+        let cmdline = "/usr/bin/exiftool -quiet "+exiftool_cmdargs.map( a => "-"+a+"='"+timestamp.toEXIFString()+"'" ).join(" ") +" '"+this.path+"'";
         try {
             child_process.execSync(cmdline);
             return '';
@@ -195,19 +201,19 @@ class ImageFile extends ImageObject {
         if( this.min_exif_date===undefined )
             throw Error("Image file was not properly initialized");
         // Make sure EXIF timestamps are right
-        let default_answer='y',result;
+        let result;
         if( !this.does_date_match(this.min_exif_date) ) {
-            default_answer = common.get_answer(
+            _DEFAULT_SET_EXIF_TIMESTAMP_ANSWER = common.get_answer(
                 "File '"+this.path+"' needs EXIF date updated from '"+(this.min_exif_date?this.min_exif_date.toEXIFString():"n/a")+"' to '"+this.timestamp.toEXIFString()+"'. Do it?",
-                default_answer);
-            if( default_answer.toLowerCase()=='y' ) {
-                if( (result=this.set_exif_timestamp(this.timestamp.toEXIFString()))!='' ) {
+                _DEFAULT_SET_EXIF_TIMESTAMP_ANSWER);
+            if( _DEFAULT_SET_EXIF_TIMESTAMP_ANSWER.toLowerCase()=='y' ) {
+                if( (result=this.set_exif_timestamp(this.timestamp))!='' ) {
                     common.log(1,"Cannot set EXIF timestamps of '"+this.path+" to '"+this.timestamp.toEXIFString()+"' ("+result+")");
                 }
             }
         }
         else {
-            common.log(4,"File '"+this.path+" matches its EXIF tags");
+            common.log(4,"File '"+this.path+" matches its EXIF tags ("+this.timestamp+"="+this.min_exif_date+")");
         }
         // Make sure path is right
         if( !this.does_date_match(this.path_date) ) {
@@ -220,13 +226,44 @@ class ImageFile extends ImageObject {
                 (this.path_parts.topic ? this.path_parts.topic+"/" : "")+
                 this.path_parts.tail;
             if( this.path!=proposed_path ) {
-                default_answer = common.get_answer(
-                    "File '"+this.path+"' has ts '"+this.timestamp.toEXIFString()+"' and needs to be moved to '"+proposed_path+"'. Do it?",
-                    default_answer);
-                if( default_answer.toLowerCase()=='y' ) {
+                _DEFAULT_UPDATE_FILE_PATH_ANSWER = common.get_answer(
+                    "Date of file '"+this.path+"' determined by its path is not equal to ts '"+this.timestamp.toEXIFString()+"':\n"+
+                        "\t1. Move file to '"+proposed_path+"'\n"+
+                        "\t2. Update EXIF timestamp to '"+this.path_date.toEXIFString()+"'\n"+
+                        "\t3. Delete the file\n"+
+                        "\t4. Offset EXIF timestamp\n"+
+                        (_DEFAULT_EXIF_OFFSET_ANSWER.length ? "\t5. Offset EXIF timestamp by '"+_DEFAULT_EXIF_OFFSET_ANSWER+"'\n":"")+
+                        "\t6. Do nothing\n"+
+                        "Please choose 1 to 6",
+                    _DEFAULT_UPDATE_FILE_PATH_ANSWER);
+                switch( _DEFAULT_UPDATE_FILE_PATH_ANSWER.toLowerCase() ) {
+                case '1':
                     if( (result=this.move_to(proposed_path))!='' ) {
                         common.log(1,"Cannot move '"+this.path+" to '"+proposed_path+"' ("+result+")");
                     }
+                    break;
+                case '2':
+                    if( (result=this.set_exif_timestamp(this.path_date))!='' ) {
+                        common.log(1,"Cannot set EXIF timestamp of '"+this.path+" to '"+this.path_date+"' ("+result+")");
+                    }
+                    break;
+                case '3':
+                    if( (result="not implemented yet")!='' ) {
+                        common.log(1,"Cannot delete '"+this.path+"' ("+result+")");
+                    }
+                    break;
+                case '4':
+                    _DEFAULT_EXIF_OFFSET_ANSWER = common.get_answer(
+                        "Please enter the offset amount (e.g. 1h23m or -1d2m05s)",
+                        _DEFAULT_EXIF_OFFSET_ANSWER);
+                    // fall through
+                case '5':
+                    if( _DEFAULT_EXIF_OFFSET_ANSWER.length ) {
+                        if( (result=this.set_exif_timestamp(new Date(this.timestamp.valueOf()+common.parse_duration(_DEFAULT_EXIF_OFFSET_ANSWER))))!='' ) {
+                            common.log(1,"Cannot set EXIF timestamp of '"+this.path+" to '"+this.path_date+"' ("+result+")");
+                        }
+                    }
+                    break;
                 }
             }
         }
@@ -286,7 +323,7 @@ class ImageFolder extends ImageObject {
         this.files   = files;
         return this;
     }
-    getImages( images ) {
+    read( storage ) {
         // Yes, I am aware of https://www.npmjs.com/package/exiftool-vendored but I found it working
         // unreliably, choking on the large number of files (think 20000). More specifically its perl 
         // process seem to die without warning as more and more file names are sent to it on its stdin
@@ -315,7 +352,8 @@ class ImageFolder extends ImageObject {
             let data  = "-json\n"+
                 "-fast\n"+
                 "-ignoreMinorErrors\n"+
-                "-charset filename=utf8\n"+
+                "-charset\n"+
+                "filename=utf8\n"+
                 "-ContentCreateDate\n"+
                 "-CreateDate\n"+
                 "-CreationDatea\n"+
@@ -337,7 +375,6 @@ class ImageFolder extends ImageObject {
                 "-ModifyDate\n"+
                 "-SubSecCreateDate\n"+
                 "-SubSecModifyDate\n"+
-                "-TrackCreateDate\n"+
                 "-TrackModifyDate\n"+
                 filepaths.join("\n");
             return fs.writeFile(perl_cmdline_filename,data,{mode:0x180/*=0600*/},(err) => {
@@ -351,7 +388,7 @@ class ImageFolder extends ImageObject {
         }).then( () => {
             let cmdline = "/usr/bin/exiftool -@ "+perl_cmdline_filename;
             return new Promise( (resolve,reject) => {
-                common.log(1,"Executing '"+cmdline+"' for "+filepaths.length+" files. It takes long but works reliably");
+                common.log(2,"Executing '"+cmdline+"' for "+filepaths.length+" files");
                 child_process.exec(cmdline,{'encoding':'utf8','maxBuffer':(4096*filepaths.length)},(err,stdout,stderr) => {
                     if( err ) {
                         reject(err);
@@ -361,7 +398,7 @@ class ImageFolder extends ImageObject {
                         common.log(1,"Got EXIF information about "+exifinfo.length+" files, now matching it back to files");
                         exifinfo.forEach( ei => {
                             if( files.hasOwnProperty(ei.SourceFile) ) {
-                                let exif_dates = Object.keys(ei).map( k => common.EXIFDate.fromEXIFString(ei[k]) ).filter( dt => (dt.toString()!='Invalid Date') );
+                                let exif_dates = Object.keys(ei).map( k => Date.fromEXIFString(ei[k]) ).filter( dt => (dt.toString()!='Invalid Date') );
                                 files[ei.SourceFile].set_exif_dates(exif_dates);
                             }
                             else {
@@ -381,7 +418,7 @@ class ImageFolder extends ImageObject {
                         files_without_exif_info++;
                     }
                     else {
-                        images.add(f.id,f);
+                        storage.add(f.id,f);
                     }
                 });
             }).catch( (err) => {
@@ -389,7 +426,8 @@ class ImageFolder extends ImageObject {
             });
         }).then( () => {
             common.log(3,"Removing cmd line file '"+perl_cmdline_filename+"'");
-            //fs.unlinkSync(perl_cmdline_filename);
+            fs.unlinkSync(perl_cmdline_filename);
+            return storage;
         });
     }
 }
