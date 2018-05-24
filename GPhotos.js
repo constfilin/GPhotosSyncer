@@ -7,6 +7,7 @@ const googleAuth  = require('google-auth-library');
 const google      = require('googleapis');
 
 const common          = require('./common');
+const Storage         = require('./Storage');
 const BunchOfPromises = require('./BunchOfPromises');
 
 const _CLIENT_SECRETS_PATH  = './client_secret.json';
@@ -161,6 +162,14 @@ class GPhotos {
             return this;
         });
     }
+    constructor() {
+        try {
+            this.storage = new Storage(common.photosCache);
+        }
+        catch( err ) {
+            this.storage = undefined;
+        }
+    }
     getAlbums( albums ) {
         return this.login().then( () => {
             return new Promise( (resolve,reject) => {
@@ -186,7 +195,14 @@ class GPhotos {
             });
         });
     }
-    read( storage ) {
+    read( year ) {
+        if( year  ) {
+            throw Error("Reading photos of particular year is not yet implemented");
+        }
+        // Calling read method without specifying an argument means that we want to read ALL
+        // the photos. In this case we can update everything in our storage
+        let storage = this.storage = new Storage();
+
         // Reading photos is not trivial. 
         // 
         // We have an unknown number of promises to resolve because the promise to load a page 'mediaItem::search' can produce
@@ -215,7 +231,7 @@ class GPhotos {
                 throw err;
             });
         }).then( () => {
-            return storage;
+            return this;
         });
     }
 }

@@ -25,44 +25,44 @@ class Action {
 const _ACTIONS = [
     new Action("// Actions on gphotos"),
     new Action("gphotos_showYears","shows the number of images GPhotos has for each year",false,true,function(images,photos) {
-        let by_years = photos.toHash(p => p.timestamp.getFullYear(),true);
+        let by_years = photos.storage.rehash(p => p.timestamp.getFullYear());
         for( let year in by_years ) {
             console.log(year+": "+by_years[year].length+" photos");
         }
     }),
     new Action("gphotos_showYear=year","shows GPhotos photos timestamped to given year",false,true,function(images,photos,year) {
-        photos.filter(p => p.timestamp.getFullYear()==year).forEach( (p) => {
+        Object.values(photos.storage.filter(p => p.timestamp.getFullYear()==year)).forEach( p => {
             console.log(p.title+" => timestamp="+p.timestamp+",id="+p.id);
         });
     }),
     new Action("gphotos_matchingTitle=pattern","shows GPhotos photos with titles matching given regexp pattern",false,true,function(images,photos) {
         let re = new RegExp(common.argv[this.name_parts[0]],"i");
-        photos.filter( p => p.title.match(re) ).forEach( (p) => {
-            console.log(p.id+" => "+p.title);
+        Object.values(photos.storage.filter( p => p.title.match(re) )).forEach( p => {
+            console.log(p.title+" => timestamp="+p.timestamp+",id="+p.id);
         });
     }),
     new Action("gphotos_mismatchingTitle=pattern","shows GPhotos photos with titles not matching given regexp pattern",false,true,function(images,photos) {
         let re = new RegExp(common.argv[this.name_parts[0]],"i");
-        photos.filter( p => (p.title.match(re)==null) ).forEach( (p) => {
-            console.log(p.id+" => "+p.title);
+        Object.values(photos.storage.filter( p => (p.title.match(re)==null) )).forEach( p => {
+            console.log(p.title+" => timestamp="+p.timestamp+",id="+p.id);
         });
     }),
     new Action("gphotos_mismatchingYear=year","shows GPhotos photos timestamped to given year and with title mismatching the year",false,true,function(images,photos,year) {
-        let re   = new RegExp("^"+year+"_.+","i");
-        photos.filter( p => (p.timestamp.getFullYear()==year) && (p.title.match(re)==null) ).forEach( (p) => {
+        let re = new RegExp("^"+year+"_.+","i");
+        Object.values(photos.storage.filter( p => (p.timestamp.getFullYear()==year) && (p.title.match(re)==null) )).forEach( p => {
             console.log(p.id+" => "+p.title);
         });
     }),
     new Action("gphotos_mismatchingYears","shows GPhotos photos whose title mismatch the image timestamp",false,true,function(images,photos) {
-        photos.filter( p => p.title.indexOf(p.timestamp.getFullYear()+"_")!=0).forEach( (p) => {
+        Object.values(photos.storage.filter( p => p.title.indexOf(p.timestamp.getFullYear()+"_")!=0)).forEach( (p) => {
             console.log(p.id+" => year="+p.timestamp.getFullYear()+","+p.title);
         });
     }),
     new Action("gphotos_minusImagesYear=year","shows GPhotos photos that are not among images for given year",true,true,function(images,photos,year) {
-        common.subtract_items(
-            photos.filter( p => (p.timestamp.getFullYear()==year) ),
-            images.filter( i => { i.title=i.gphotos_path; return (i.timestamp.getFullYear()==year); } )
-        ).forEach( p => {
+        Object.values(common.subtract_storables(
+            photos.storage.filter(p=>(p.timestamp.getFullYear()==year)),
+            images.storage.filter(i=>(i.timestamp.getFullYear()==year))
+        )).forEach( p => {
             if( p.closest_match ) {
                 console.log(p.id+" => "+p.timestamp+","+p.content.src+", closest is "+p.closest_match.path+" with timestamp="+p.closest_match.timestamp);
             }
@@ -72,51 +72,69 @@ const _ACTIONS = [
         });
     }),
     new Action("gphotos_count","shows the count of photos in GPhotos",false,true,function(images,photos) {
-        console.log(photos.length);
+        console.log(photos.storage.size);
+    }),
+    new Action("gphotos_showAlbums","list the albums you have in GPhotos",false,true,function(images,photos) {
+        photos.getAlbums().then( (albums) => { 
+            console.log(albums);
+        });
+    }),
+    new Action("gphotos_updateAlbum=albumId","update cached information all GPhotos in given album",false,true,function(images,photos,albumId) {
+        photos.read(albumId).then( (photos) => {
+            console.log("Re-read information about photos in album '"+albumId+"'");
+        });
+    }),
+    new Action("gphotos_update","update cached information about all GPhotos",false,true,function(images,photos) {
+        photos.read().then( (photos) => {
+            console.log("Re-read information about "+photos.storage.size+" photos");
+        });
     }),
     new Action("// Actions on images (i.e. file system)"),
     new Action("images_showYears","shows the number of images has for each year",true,false,function(images,photos) {
-        let by_years = images.toHash(p => p.timestamp.getFullYear(),true);
+        let by_years = images.storage.rehash( (i) => {
+            console.log(i);
+            i.timestamp.getFullYear()
+        },true);
         for( let year in by_years ) {
             console.log(year+": "+by_years[year].length+" photos");
         }
     }),
     new Action("images_showYear=year","shows images timestamped to given year",true,false,function(images,photos,year) {
-        images.filter( p => p.timestamp.getFullYear()==year ).forEach( (p) => {
+        Object.values(images.storage.filter( p => p.timestamp.getFullYear()==year )).forEach( (p) => {
             console.log(p.id+" => "+p.path);
         });
     }),
     new Action("images_matchingGPhotosPath=pattern","shows images with gphotos_path matching given regexp pattern",true,false,function(images,photos) {
         let re = new RegExp(common.argv[this.name_parts[0]],"i");
-        images.filter( p => p.gphotos_path.match(re) ).forEach( (p) => {
+        Object.values(images.storage.filter( p => p.gphotos_path.match(re) )).forEach( (p) => {
             console.log(p.id+" => "+p.path);
         });
     }),
     new Action("images_mismatchingGPhotosPath=pattern","shows images with gphotos_path not matching given regexp pattern",true,false,function(images,photos) {
         let re = new RegExp(common.argv[this.name_parts[0]],"i");
-        images.filter( p => (p.gphotos_path.match(re)==null) ).forEach( (i) => {
+        Object.values(images.storage.filter( p => (p.gphotos_path.match(re)==null) )).forEach( (i) => {
             console.log(i.id+" => "+i.path);
         });
     }),
     new Action("images_mismatchingYear=year","shows images timestamped to given year and with gphotos_path mismatching the year",true,false,function(images,photos,year) { 
         let re   = new RegExp("^"+year+"_.+","i");
-        images.filter( p => (p.timestamp.getFullYear()==year) && (p.gphotos_path.match(re)==null) ).forEach( (i) => {
+        Object.values(images.storage.filter( p => (p.timestamp.getFullYear()==year) && (p.gphotos_path.match(re)==null) )).forEach( (i) => {
             console.log(i.id+" => "+i.path);
         });
     }),
     new Action("images_mismatchingYears","shows images whose title mismatch the image timestamp",true,false,function(images,photos) {
-        images.filter( p => p.gphotos_path.indexOf(p.timestamp.getFullYear()+"_")!=0 ).forEach( (i) => {
+        Object.values(images.storage.filter( p => p.gphotos_path.indexOf(p.timestamp.getFullYear()+"_")!=0 )).forEach( (i) => {
             console.log(i.id+" => year="+i.timestamp.getFullYear()+","+i.title);
         });
     }),
     new Action("images_minusGPhotosYear=year","shows images that are not among GPhotos photos for given year",true,true,function(images,photos,year) {
-        common.subtract_items(
-            images.filter( i => { i.title=i.gphotos_path; return (i.timestamp.getFullYear()==year); } ),
-            photos.filter( p => (p.timestamp.getFullYear()==year) )
-        ).forEach( i => {
+        Object.values(common.subtract_storables(
+            images.storage.filter( i => { i.title=i.gphotos_path; return (i.timestamp.getFullYear()==year); } ),
+            photos.storage.filter( p => (p.timestamp.getFullYear()==year) )
+        )).forEach( i => {
             if( i.closest_match ) {
-                console.log(i.id+" => "+(new Date(i.timestamp)).toEXIFString()+","+i.path+",closest is "+(new Date(i.closest_match.timestamp)).toEXIFString()+".\nTry:\n"+
-                            "/usr/bin/exiftool '-AllDates="+(new Date(i.closest_match.timestamp)).toEXIFString()+"' '"+i.path+"'\n"+
+                console.log(i.id+" => "+Date.toEXIFString(i.timestamp)+","+i.path+",closest is "+Date.toEXIFString(i.closest_match.timestamp)+".\nTry:\n"+
+                            "/usr/bin/exiftool '-AllDates="+Date.toEXIFString(i.closest_match.timestamp)+"' '"+i.path+"'\n"+
                             process.argv[0]+" CacheTool.js "+
                             "--images "+
                             "--update "+
@@ -124,40 +142,47 @@ const _ACTIONS = [
                             "--from_path");
             }
             else {
-                console.log(i.id+" => "+(new Date(i.timestamp)).toEXIFString()+","+i.path+", this image DOES NOT HAVE CLOSEST PHOTO");
+                console.log(i.id+" => "+Date.toEXITString(i.timestamp)+","+i.path+", this image DOES NOT HAVE CLOSEST PHOTO");
             }
         });
     }),
-    new Action("images_checkExifInfoYear=year","reads images of given year and makes sure that their path location matches their EXIF timestamps",true,false,function(images,photos,year) {
-        try {
-            let imageFolder = new Images.ImageFolder(common.imagesRoot+"/"+year);
-            imageFolder.read(new Storage()).then( () => {
-                imageFolder.check_exif_locations();
-            });
-        }
-        catch( err ) {
-            console.log("Exception from checking images ("+err+")");
-        }
+    new Action("images_checkExifTimestampsYear=year","reads images of given year and makes sure that their path location matches their EXIF timestamps",true,false,function(images,photos,year) {
+        let changed_files = images.check_exif_timestamps(i => i.timestamp.getFullYear()==year);
+        common.log(1,changed_files+" file have been updated");
+    }),
+    new Action("images_checkExifTimestamps","reads all images and makes sure that their path location matches their EXIF timestamps",true,false,function(images,photos,year) {
+        let changed_files = images.check_exif_timestamps(i => true);
+        common.log(1,changed_files+" file have been updated");
     }),
     new Action("images_count","shows the count of images",true,false,function(images,photos) {
-        console.log(images.length);
+        console.log(images.storage.size);
+    }),
+    new Action("images_updateYear=year","updates cached information about images of particular year",true,false,function(images,photos,year) {
+        images.read(common.imagesRoot+"/"+year).then( (images) => {
+            console.log("Updated cache information about images of year "+year);
+        });
+    }),
+    new Action("images_update","updates cached information about all images",true,false,function(images,photos) {
+        images.read(common.imagesRoot).then( (images) => {
+            console.log("Update cache information about "+images.storage.toArray().length+" images");
+        });
     }),
     new Action("// Other"),
     new Action("deltaYear=year","shows differences in objects timestamped to particular year",true,true,function(images,photos,year) {
-        _ACTIONS.filter(a => ["images_minusGPhotosYear","gphotos_minusImagesYear"].indexOf(a.name_parts[0])>=0 ).forEach( a => {
+        _ACTIONS.filter(a => ["images_minusGPhotosYear","gphotos_minusImagesYear"].indexOf(a.name_parts[0])>=0).forEach( a => {
             console.log(a.name_parts[0]+":");
             (a.proc.bind(a))(images,photos,year);
         });
     }),
     new Action("showYear=year","shows objects timestamped to particular year",true,true,function(images,photos,year) {
-        _ACTIONS.filter(a => ["images_showYear","gphotos_showYear"].indexOf(a.name_parts[0])>=0 ).forEach( a => {
+        _ACTIONS.filter(a => ["images_showYear","gphotos_showYear"].indexOf(a.name_parts[0])>=0).forEach( a => {
             console.log(a.name_parts[0]+":");
             (a.proc.bind(a))(images,photos,year);
         });
     }),
     new Action("showYears","for each year show how many images and photos it has",true,true,function(images,photos) {
-        let photos_by_years = photos.toHash(p => p.timestamp.getFullYear(),true);
-        let images_by_years = images.toHash(i => i.timestamp.getFullYear(),true);
+        let photos_by_years = photos.storage.rehash(p => p.timestamp.getFullYear());
+        let images_by_years = images.storage.rehash(i => i.timestamp.getFullYear());
         Object.keys(photos_by_years).reduce( (accumulator,year) => {
             if( !accumulator.includes(year) )
                 accumulator.push(year);
@@ -173,41 +198,21 @@ const _ACTIONS = [
     }),
 ];
 /////////////////////////////////////////////////////////////////
-// functions
-/////////////////////////////////////////////////////////////////
-function get_storage( storage_file, constructor_, arg1, arg2, arg3 ) {
-    return new Promise( (resolve,reject) => {
-        resolve(new Storage(require(storage_file)));
-    }).catch( (err) => {
-        return (new constructor_(arg1,arg2,arg3)).read(new Storage()).then( (storage) => {
-            common.log(1,"Got "+storage.size+" items, writing to "+storage_file);
-            fs.writeFileSync(storage_file,JSON.stringify(storage.storage));
-            return storage;
-        });
-    }).then( (storage) => {
-        // Just return the JSON object itself as an array of items
-        return Object.values(storage.storage);
-    });
-}
-/////////////////////////////////////////////////////////////////
 // top level
 /////////////////////////////////////////////////////////////////
 let valid_actions = _ACTIONS.filter( a => common.argv.hasOwnProperty(a.name_parts[0]) && a.proc );
 if( valid_actions.length ) {
     let images,photos;
     valid_actions.forEach( (a) => {
-        let imagesPromise = a.needs_images ? (images ? images : get_storage(common.imagesCache,Images.ImageFolder,common.imagesRoot).then( (storage) => {
-            return images = storage;
-        }).catch( (err) => {
-            common.log(1,"There was an error getting images ("+err+")");
+        let imagesPromise = a.needs_images ? (images ? images : (new Images()).read(common.imagesRoot).catch( (err) => {
+            console.log("There was an error getting images ("+err+")");
         })) : undefined;
-        let photosPromise = a.needs_photos ? (photos ? photos : get_storage(common.photosCache,GPhotos).then( (storage) => {
-            return photos = storage;
-        }).catch( (err) => {
-            common.log(1,"There was an error getting photos ("+err+")");
+        let photosPromise = a.needs_photos ? (photos ? photos : (new GPhotos()).read().catch( (err) => {
+            console.log("There was an error getting photos ("+err+")");
         })) : undefined;
         a.call(imagesPromise,photosPromise,Number(common.argv[a.name_parts[0]])).catch( (err) => {
-            common.log(1,"Exception from handler "+a.name+" ("+err+")");
+            console.log(err);
+            console.log("Exception from handler of "+a.name+" ("+err+")");
         });
     });
 }
