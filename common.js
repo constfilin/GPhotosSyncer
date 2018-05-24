@@ -152,19 +152,19 @@ module.exports = {
         let result = [];
         const ms_in_hour   = 60*60*1000;
         const common       = module.exports;
-        const s2_by_title  = Object.rehash(s2,i => i.title.toLowerCase());
+        const s2_by_gpath  = Object.rehash(s2,i => i.gphotos_path.toLowerCase(),1);
         for( let k in s1 ) {
             let a1 = s1[k];
             if( s2.hasOwnProperty(k) ) {
                 // same ID is among the other items, it does not get to the result
             }
             else {
-                let a1_title = a1.title.toLowerCase();
-                if( s2_by_title.hasOwnProperty(a1_title) ) {
+                let a1_gpath = a1.gphotos_path.toLowerCase();
+                if( s2_by_gpath.hasOwnProperty(a1_gpath) ) {
 
                     // Let see if there is an identically titled item in a2 with timestamp
                     // "close enough" to the timestamp of item in a1
-                    let search_results = s2_by_title[a1_title].reduce( (accumulator,element) => {
+                    let search_results = s2_by_gpath[a1_gpath].reduce( (accumulator,element) => {
                         let diff = Math.abs(element.timestamp.valueOf()-a1.timestamp.valueOf());
                         return (diff<accumulator.diff)? {'diff':diff,'element':element} : accumulator;
                     },{'diff':Number.POSITIVE_INFINITY,'element':undefined});
@@ -173,7 +173,7 @@ module.exports = {
                         // this is "close enough"
                     }
                     else if( search_results.diff<24*ms_in_hour ) {
-                        common.log(2,"Found items with title '"+a1_title+"' but with timestamps different by "+(Math.abs(search_results.diff)/1000)+" seconds");
+                        common.log(2,"Found items with ID '"+k+"' matching item '"+search_results.element.id+"' with timestamps different by "+(Math.abs(search_results.diff)/(60*1000))+" minutes");
                     }
                     else {
                         // Have the same title but too different timestamps

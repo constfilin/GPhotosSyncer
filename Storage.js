@@ -18,6 +18,9 @@ class Storage {
             this.size++;
         }
     }
+    get( id ) {
+        return this.storage.hasOwnProperty(id) ? this.storage[id] : undefined;
+    }
     add( id, item ) {
         if( this.storage.hasOwnProperty(id) )
             return false;
@@ -29,12 +32,13 @@ class Storage {
     }
     del( id ) {
         if( !this.storage.hasOwnProperty(id) )
-            return false;
+            return undefined;
+        let item = this.storage[id];
         delete this.storage[id];
         this.size--;
         if( this.size%100==0 )
             common.log(3,"the number of items is "+this.size);
-        return true;
+        return item;
     }
     toArray() {
         return Object.values(this.storage);

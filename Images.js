@@ -56,7 +56,6 @@ class ImageFile {
         self.relative_path  = path.substr(common.imagesRoot.length+1);
         self.gphotos_path   = self.constructor.to_gphotos(self.relative_path);
         self.name           = self.relative_path.replace(/^.+\/([^\/]+)$/,"$1");
-        self.gphotos_name   = self.constructor.to_gphotos(self.name);
         // Dates
         self.path_date      = self.guess_date_from_path(self.relative_path);
         self.filename_date  = self.guess_date_from_filename(self.relative_path);
@@ -223,7 +222,9 @@ class ImageFile {
     check_exif_timestamps() {
         if( !this.exif_date )
             throw Error("Image file was not properly initialized");
-        
+
+        console.log(this);
+
         function get_timestamp_path( im, ts ) {
             // If the time difference is within the max discrepancy then do not suggesting anything new
             if( im.exif_date && Math.abs(im.exif_date.valueOf()-ts.valueOf())<(im.max_discrepancy_minutes*60*1000) )
@@ -416,6 +417,7 @@ class Images {
         // only if a new different path was passed or if we have no storage at all)
         if( this.storage && (path==this.storage_path) )
             return Promise.resolve(this);
+
         let filepaths             = this.constructor.get_folder_filepaths(path,[]);
         let perl_cmdline_filename = tmp.tmpNameSync();
         return new Promise( (resolve,reject) => {
@@ -515,6 +517,14 @@ class Images {
             return true;
         });
         return changed_files.length;
+    }
+    remove( id ) {
+        if( !this.storage.storage.hasOwnProperty(id) )
+            return Promise.resolve("id '"+id+" is not known");
+        let im  = this.storage.del(id);
+        console.log(im);
+        fs.unlinkSync(im.path);
+        return Promise.resolve("");
     }
 }
 module.exports = Images;
