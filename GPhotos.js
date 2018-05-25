@@ -41,10 +41,10 @@ class ReadContext {
         this.pages.add(new Promise( (resolve,reject) => {
             this.last_page_resolve = resolve;
         }));
-        this.titles = new BunchOfPromises();
+        this.addgphotos = new BunchOfPromises();
     }
     toString() {
-        return "pages={"+this.pages+"},titles={"+this.titles+"}";
+        return "pages={"+this.pages+"},addgphotos={"+this.addgphotos+"}";
     }
 }
 class GPhotos {  
@@ -79,7 +79,7 @@ class GPhotos {
             }
         });
     }
-    get_mediaitem_title_promise( context, mediaItem ) {
+    get_mediaitem_content_disposition_promise( mediaItem ) {
         const content_disposition = 'content-disposition';
         const cd_re               = /^(?:.*;)?filename=(['"])([^'"]+)\1.*$/i;
         return new Promise( (resolve,reject) => {
@@ -90,41 +90,46 @@ class GPhotos {
             };
             request(headOptions,(err,response,body) => {
                 if( err ) {
-                    mediaItem.retryCount = (mediaItem.retryCount||0)+1;
-                    if( mediaItem.retryCount<3 ) {
-                        common.log(1,"Got error '"+err+" on a media item, retry count is "+mediaItem.retryCount+", retrying...");
-                        context.titles.add(this.get_mediaitem_title_promise(context,mediaItem));
-                        context.titles.resolve(resolve);
-                    }
-                    else {
-                        context.titles.reject(reject,Error("Cannot get head ("+err+")"));
-                    }
+                    reject(err);
                 }
-                else if( response.headers.hasOwnProperty(content_disposition) ) {
-                    let matches = response.headers[content_disposition].match(cd_re);
-                    if( matches ) {
-                        let gphoto = new GPhotos(mediaItem,matches[2]);
-                        context.storage.add(gphoto.id,gphoto);
-                        common.log(3,"Context="+context+",loaded photo '"+gphoto.gphotos_path+"'");
-                        context.titles.resolve(resolve);
-                    }
-                    else {
-                        context.titles.reject(reject,Error(content_disposition+" did not match regular expression"+re));
-                    }
+                else if( !response.headers.hasOwnProperty(content_disposition) ) {
+                    reject(Error("HEAD request didn't return "+content_disposition));
                 }
                 else {
-                    context.titles.reject(reject,Error("Response headers did not have "+content_disposition));
+                    let matches = response.headers[content_disposition].match(cd_re);
+                    if( matches ) {
+                        resolve(matches[2]);
+                    }
+                    else {
+                        reject(Error(content_disposition+" did not match regular expression"+re));
+                    }
+                }
+            });
+        });
+    }
+    get_add_gphoto_promise( context, mediaItem ) {
+        return new Promise( (resolve,reject) => {
+            get_mediaitem_content_disposition_promise(mediaItem).then( (content_disposition) => {
+                let gphoto = new GPhoto(mediaItem,content_disposition);
+                context.storage.add(gphoto.id,gphoto);
+                common.log(3,"Context="+context+",loaded photo '"+gphoto.gphotos_path+"'");
+                context.addgphotos.resolve(resolve);
+            }).catch( err => {
+                mediaItem.retryCount = (mediaItem.retryCount||0)+1;
+                if( mediaItem.retryCount<3 ) {
+                    common.log(1,"Got error '"+err+" on a media item, retry count is "+mediaItem.retryCount+", retrying...");
+                    context.addgphotos.add(this.get_add_gphoto_promise(context,mediaItem));
+                    context.addgphotos.resolve(resolve);
+                }
+                else {
+                    context.addgphotos.reject(reject,Error("Cannot get content disposition ("+err+")"));
                 }
             });
         });
     }
     get_page_promise( context, pageToken ) {
         return new Promise( (resolve,reject) => {
-            const accessTokenParams = {
-                'access_token' : this.credentials.access_token
-            };
-            const requestQuery   = querystring.stringify(accessTokenParams);
-            const body           = {'pageSize':100};
+            const body = {'pageSize':100};
             if( context.albumId ) {
                 body['albumId'] = context.albumId;
             }
@@ -132,8 +137,11 @@ class GPhotos {
                 body['pageToken'] = pageToken;
             }
             const requestOptions = {
-                'url'    : 'https://photoslibrary.googleapis.com/v1/mediaItems:search?'+requestQuery,
-                'headers': {"Connection": "keep-alive"},
+                'url'    : 'https://photoslibrary.googleapis.com/v1/mediaItems:search',
+                'headers': {
+                    "Connection"    : "keep-alive",
+                    "Authorization" : "Bearer "+this.credentials.access_token
+                },
                 'json'   : true,
                 'body'   : body
             };
@@ -147,7 +155,7 @@ class GPhotos {
                 else {
                     // Once Google fixes https://issuetracker.google.com/issues/79656863 the following statement will no longer be necessary
                     body.mediaItems.forEach( mi => {
-                        context.titles.add(this.get_mediaitem_title_promise(context,mi));
+                        context.addgphotos.add(this.get_add_gphoto_promise(context,mi));
                     });
                     common.log(1,"Context="+context+",loaded "+body.mediaItems.length+" media items");
                     if( body.nextPageToken ) {
@@ -192,17 +200,19 @@ class GPhotos {
     getAlbums( albums ) {
         return this.login().then( () => {
             return new Promise( (resolve,reject) => {
-                const accessTokenParams = {
-                    'access_token' : this.credentials.access_token
-                };
-                const requestQuery   = querystring.stringify(accessTokenParams);
                 const requestOptions = {
-                    'url'  : 'https://photoslibrary.googleapis.com/v1/albums?'+requestQuery,
-                    'json' : true
+                    'url'     : 'https://photoslibrary.googleapis.com/v1/albums',
+                    'headers' : {
+                        'Authorization' : 'Bearer '+this.credentials.access_token
+                    },
+                    'json'    : true
                 };
                 request.get(requestOptions,(err,response,body) => {
                     if( err ) {
                         reject(err);
+                    }
+                    else if( body.error ) {
+                        reject(Error(body.error.message));
                     }
                     else if( body.hasOwnProperty('albums') ) {
                         resolve(Object.map(body.albums, a=> {
@@ -226,7 +236,7 @@ class GPhotos {
                     'headers': {
                         'Content-Type'           : 'application/octet-stream',
                         'Authorization'          : 'Bearer '+this.credentials.access_token,
-                        'X-Google-Upload-File-Name': im.name /* this does not seem to work, instead name seems to be generated from the current date, e.g. 2018-05-23.jpg */
+                        'X-Goog-Upload-File-Name': im.name /* this does not seem to work, instead name seems to be generated from the current date, e.g. 2018-05-23.jpg */
                     },
                     'body'   : fs.readFileSync(im.path)
                 };
@@ -237,8 +247,8 @@ class GPhotos {
                     else {
                         let upload_token = body;
                         requestOptions = {
-                            'url'     : 'https://photoslibrary.googleapis.com/v1/mediaItems:batchCreate',
                             'json'    : true,
+                            'url'     : 'https://photoslibrary.googleapis.com/v1/mediaItems:batchCreate',
                             'headers' : {
                                 'Content-Type'   : 'application/json',
                                 'Authorization'  : 'Bearer '+this.credentials.access_token
@@ -258,8 +268,10 @@ class GPhotos {
                             if( err ) {
                                 resolve(im.path+" on batch create => "+err);
                             }
+                            else if( body.error ) {
+                                resolve(body.error.message);
+                            }
                             else if( !body.newMediaItemResults || body.newMediaItemResults.length!=1 ) {
-                                console.log(JSON.stringify(body));
                                 resolve(im.path+" on batch create didn't return newMediaItemResults");
                             }
                             else {
@@ -268,6 +280,8 @@ class GPhotos {
                                     resolve(im.path+" status code is "+nmir.status.code+"("+nmir.status.message+")");
                                 }
                                 else {
+                                    // Photos are uploaded to GPhotos without filename (despite X-Goog-Upload-File-Name header, see above)
+                                    // Therefore when we need to preserve the gphotos_path in the cache by copiyng it from the original
                                     let gphoto = new GPhoto(nmir.mediaItem,im.gphotos_path);
                                     // I have seen where description is not available immediately after download. Fill it in ourselves
                                     if( !gphoto.description )
@@ -281,12 +295,6 @@ class GPhotos {
                 });
             });
         });
-    }
-    remove( id ) {
-        if( !this.storage.storage.hasOwnProperty(id) )
-            return Promise.resolve("id '"+id+" is not known");
-        let gphoto = this.storage.del(id);
-        return Promise.resolve("Google API does not support removal of photos yet, Do it manually at "+gphoto.productUrl);
     }
     read( albumId ) {
 
@@ -314,14 +322,14 @@ class GPhotos {
         // items. Creating such a "last page" promise happens inside of ReadContext constructor.
         //
         // Separately, as pages are loaded, the code creates (due to https://issuetracker.google.com/issues/79656863) promises 
-        // to load titles of the media items. These are put into ReadContext.titles promises and the code waits on all
-        // these title promises before resolving the main "get photos" promise.
+        // to load titles of the media items. These are put into ReadContext.addgphotos promises and the code waits on all
+        // these addgphotos promises before resolving the main "get photos" promise.
         return this.login().then( () => {
             let context = new ReadContext(storage,albumId);
             context.pages.add(this.get_page_promise(context));
             return Promise.all(context.pages.promises).then( () => {
                 common.log(1,"All pages have been loaded ("+context+")");
-                return Promise.all(context.titles.promises);
+                return Promise.all(context.addgphotos.promises);
             }).catch( (err) => {
                 common.log(1,"There was an error loading pages ("+err+")");
                 throw err;
@@ -335,13 +343,12 @@ class GPhotos {
     getByMediaItemId( mediaItemId ) {
         return this.login().then( () => {
             return new Promise( (resolve,reject) => {
-                const accessTokenParams = {
-                    'access_token' : this.credentials.access_token
-                };
-                const requestQuery   = querystring.stringify(accessTokenParams);
                 const requestOptions = {
-                    'url'  : 'https://photoslibrary.googleapis.com/v1/mediaItems/'+mediaItemId+'?'+requestQuery,
-                    'json' : true
+                    'json'    : true,
+                    'url'     : 'https://photoslibrary.googleapis.com/v1/mediaItems/'+mediaItemId,
+                    'headers' : {
+                        'Authorization' : 'Bearer '+this.credentials.access_token
+                    }
                 };
                 request.get(requestOptions,(err,response,body) => {
                     if( err ) {
@@ -351,26 +358,32 @@ class GPhotos {
                         reject(Error(body.error.message));
                     }
                     else {
-                        resolve(body);
+                        let mediaItem = body;
+                        this.get_mediaitem_content_disposition_promise(mediaItem).then( (content_disposition) => {
+                            resolve(new GPhoto(mediaItem,content_disposition));
+                        }).catch( (err) => {
+                            reject(Error("Cannot get content disposition ("+err+")"));
+                        });
                     }
                 });
             });
         });
     }
+    removeId( id ) {
+        let gphoto = this.storage.del(id);
+        if( !gphoto )
+            throw Error("id '"+id+" is not known");
+        common.log(1,"Google API does not support removal of photos yet, Do it manually at "+gphoto.productUrl);
+        return Promise.resolve(gphoto);
+    }
     updateId( id ) {
-        return new Promise( (resolve,reject) => {
-            let gphoto = this.storage.get(id);
-            if( gphoto ) {
-                this.getByMediaItemId(gphoto.key).then( (gphoto_) => {
-                    gphoto = new GPhoto(gphoto_,gphoto.gphotos_path);
-                    this.storage.del(id);
-                    this.storage.add(gphoto.id,gphoto);
-                    resolve(gphoto);
-                });
-            }
-            else {
-                throw Error("GPhoto is ID '"+id+"' is not known");
-            }
+        let gphoto = this.storage.get(id);
+        if( !gphoto )
+            throw Error("id '"+id+"' is not known");
+        return this.getByMediaItemId(gphoto.key).then( (gphoto) => {
+            this.storage.del(id);
+            this.storage.add(gphoto.id,gphoto);
+            return gphoto;
         });
     }
 }

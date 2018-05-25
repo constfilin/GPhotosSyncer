@@ -393,6 +393,67 @@ class Images {
         });
         return filepaths;
     }
+    static get_image_files( filepaths ) {
+        if( filepaths.length==0 )
+            return Promise.resolve([]);
+        let perl_cmdline_filename = tmp.tmpNameSync();
+        return new Promise( (resolve,reject) => {
+            let data  = "-json\n"+
+                "-fast\n"+
+                "-ignoreMinorErrors\n"+
+                "-charset\n"+
+                "filename=utf8\n"+
+                ImageFile.get_exif_date_tags(1).map(t=>"-"+t).join("\n")+"\n"+
+                filepaths.join("\n");
+            return fs.writeFile(perl_cmdline_filename,data,{mode:0x180/*=0600*/},(err) => {
+                if( err ) {
+                    reject(Error("Cannot write to '"+perl_cmdline_filename+"' ("+err+")"));
+                }
+                else {
+                    resolve();
+                }
+            });
+        }).then( () => {
+            return new Promise( (resolve,reject) => {
+                let cmdline = "/usr/bin/exiftool -@ "+perl_cmdline_filename;
+                common.log(2,"Executing '"+cmdline+"' for "+filepaths.length+" files");
+                child_process.exec(cmdline,{'encoding':'utf8','maxBuffer':(4096*filepaths.length)},(err,stdout,stderr) => {
+                    if( err ) {
+                        reject(Error("Cannot execute '"+cmdline+"' ("+err+")"));
+                    }
+                    else {
+                        resolve(JSON.parse(stdout));
+                    }
+                });
+            });
+        }).then( (exifinfo) => {
+            common.log(4,"Removing cmd line file '"+perl_cmdline_filename+"'");
+            fs.unlinkSync(perl_cmdline_filename);
+            return exifinfo;
+        }).then( (exifinfo) => {
+            common.log(1,"Got EXIF information about "+exifinfo.length+" files, now matching it back to files");
+            // exiftool prints out a JSON array of objects each of which contains "SourceFile" and all
+            // the dates exiftool was able to find. Convert this array to a hash indexed by SourceFile
+            exifinfo = Array.rehash(exifinfo,ei => ei.SourceFile);
+            let result = [];
+            let files_without_exif_info = filepaths.reduce( (accumulator,fp) => {
+                if( exifinfo.hasOwnProperty(fp) ) {
+                    // Enumerate all EXIF properties, convert them to dates and choose the minimal date as the date when the image was made 
+                    result.push(new ImageFile(fp,Object.filter(Object.map(exifinfo[fp],v=>Date.fromEXIFString(v)),dt=>(dt.toString()!='Invalid Date'))));
+                }
+                else {
+                    if( accumulator++<10 ) {
+                        common.log(1,"Was not able to find EXIF info for '"+fp+"'");
+                    }
+                }
+                return accumulator;
+            },0);
+            if( files_without_exif_info>0 ) {
+                common.log(1,"Was not able to get EXIF info for "+files_without_exif_info+" files");
+            }
+            return result;
+        });
+    }
     //
     constructor() {
         try {
@@ -417,67 +478,7 @@ class Images {
         // only if a new different path was passed or if we have no storage at all)
         if( this.storage && (path==this.storage_path) )
             return Promise.resolve(this);
-
-        let filepaths             = this.constructor.get_folder_filepaths(path,[]);
-        let perl_cmdline_filename = tmp.tmpNameSync();
-        return new Promise( (resolve,reject) => {
-            let data  = "-json\n"+
-                "-fast\n"+
-                "-ignoreMinorErrors\n"+
-                "-charset\n"+
-                "filename=utf8\n"+
-                ImageFile.get_exif_date_tags(1).map(t=>"-"+t).join("\n")+"\n"+
-                filepaths.join("\n");
-            return fs.writeFile(perl_cmdline_filename,data,{mode:0x180/*=0600*/},(err) => {
-                if( err ) {
-                    reject(Error("Cannot write to '"+perl_cmdline_filename+"' ("+err+")"));
-                }
-                else {
-                    resolve();
-                }
-            });
-        }).then( () => {
-            if( filepaths.length==0 ) {
-                return [];
-            }
-            else {
-                return new Promise( (resolve,reject) => {
-                    let cmdline = "/usr/bin/exiftool -@ "+perl_cmdline_filename;
-                    common.log(2,"Executing '"+cmdline+"' for "+filepaths.length+" files");
-                    child_process.exec(cmdline,{'encoding':'utf8','maxBuffer':(4096*filepaths.length)},(err,stdout,stderr) => {
-                        if( err ) {
-                            reject(Error("Cannot execute '"+cmdline+"' ("+err+")"));
-                        }
-                        else {
-                            resolve(JSON.parse(stdout));
-                        }
-                    });
-                });
-            }
-        }).then( (exifinfo) => {
-            common.log(1,"Got EXIF information about "+exifinfo.length+" files, now matching it back to files");
-            // exiftool prints out a JSON array of objects each of which contains "SourceFile" and all
-            // the dates exiftool was able to find. Convert this array to a hash indexed by SourceFile
-            exifinfo = Array.rehash(exifinfo,ei => ei.SourceFile);
-            let storage = new Storage();
-            let files_without_exif_info = filepaths.reduce( (accumulator,fp) => {
-                if( exifinfo.hasOwnProperty(fp) ) {
-                    // Enumerate all EXIF properties, convert them to dates and choose the minimal date as the date when the image was made 
-                    let imageFile = new ImageFile(fp,Object.filter(Object.map(exifinfo[fp],v=>Date.fromEXIFString(v)),dt=>(dt.toString()!='Invalid Date')));
-                    storage.add(imageFile.id,imageFile);
-                }
-                else {
-                    if( accumulator++<10 ) {
-                        common.log(1,"Was not able to find EXIF info for '"+fp+"'");
-                    }
-                }
-                return accumulator;
-            },0);
-            if( files_without_exif_info>0 ) {
-                common.log(1,"Was not able to get EXIF info for "+files_without_exif_info+" files");
-            }
-            return storage;
-        }).then( (storage) => {
+        this.constructor.get_image_files(this.constructor.get_folder_filepaths(path,[])).then( (imagefiles) => {
             if( this.storage && path.indexOf(this.storage_path)==0 ) {
                 // We just have re-read a part of the file tree represented by this.storage. Let's update this.storage
                 common.log(3,"Removing from storage everything that starts with '"+path+"'");
@@ -487,18 +488,13 @@ class Images {
                     }
                 }
                 common.log(3,"Adding to storage "+storage.size+" files that are in '"+path+"'");
-                for( let key in storage.storage ) {
-                    this.storage.add(key,storage.storage[key]);
-                }
             }
             else {
                 // We either didn't have storage at all or re-read a completely independent part of the filesystem
-                this.storage      = storage;
                 this.storage_path = path;
+                this.storage      = new Storage();
             }
-        }).then( () => {
-            common.log(3,"Removing cmd line file '"+perl_cmdline_filename+"'");
-            fs.unlinkSync(perl_cmdline_filename);
+            imagefiles.forEach(im => this.storage.add(im.id,im));
             return this;
         });
     }        
@@ -518,13 +514,23 @@ class Images {
         });
         return changed_files.length;
     }
-    remove( id ) {
-        if( !this.storage.storage.hasOwnProperty(id) )
-            return Promise.resolve("id '"+id+" is not known");
+    removeId( id ) {
         let im  = this.storage.del(id);
-        console.log(im);
+        if( !im ) 
+            throw Error("id '"+id+" is not known");
         fs.unlinkSync(im.path);
-        return Promise.resolve("");
+        return Promise.resolve(im);
+    }
+    updateId( id ) {
+        let im = this.storage.get(id);
+        if( !im )
+            throw Error("id '"+id+"' is not known");
+        return this.constructor.get_image_files([im.path]).then( (imagefiles) => {
+            this.storage.del(id);
+            im = imagefiles[0];
+            this.storage.add(im.id,im);
+            return im;
+        });
     }
 }
 module.exports = Images;

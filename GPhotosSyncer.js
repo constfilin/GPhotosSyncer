@@ -38,7 +38,7 @@ const _ACTIONS = [
     }),
     new Action("gphotos_matchingGPath=pattern","shows gphotos with gphotos_path matching given regexp pattern",false,true,function(images,gphotos) {
         let re = new RegExp(common.argv[this.name_parts[0]],"i");
-        Object.values(gphotos.storage.filter( p => p.gphotos_path.match(re) )).forEach( p => {
+        Object.values(gphotos.storage.filter( p => !p.gphotos_path || p.gphotos_path.match(re) )).forEach( p => {
             console.log(p.id+" => "+JSON.stringify(p,undefined,2));
         });
     }),
@@ -60,16 +60,18 @@ const _ACTIONS = [
         });
     }),
     new Action("gphotos_minusImagesYear=year","shows gphotos that are not among images for given year",true,true,function(images,gphotos,year) {
-        Object.values(common.subtract_storables(
+        common.subtract_storables(
             gphotos.storage.filter(p=>(p.timestamp.getFullYear()==year)),
-            images.storage.filter(i=>(i.timestamp.getFullYear()==year))
-        )).forEach( p => {
-            if( p.closest_match ) {
-                console.log(p.id+" => "+p.timestamp+","+p.gphotos_path+", closest is "+p.closest_match.timestamp+" with timestamp="+p.closest_match.gphotos_path);
+            images.storage.filter (i=>(i.timestamp.getFullYear()==year)),
+            ( gp, closest, hours_diff, all_same_gpath ) => {
+                if( hours_diff<12 )
+                    return false;
+                console.log("GPhoto "+gp.id+" => "+Date.toEXIFString(gp.timestamp)+" is different by "+hours_diff+" hours from image "+closest.id+" => "+Date.toEXIFString(closest.timestamp)+" ("+closest.path+")\nTry:\n"+
+                            process.argv[1]+" --gphotos_updateId="+gp.id+" --images_updateId="+closest.id+"\n");
+                return false;;
             }
-            else {
-                console.log(p.id+" => "+p.timestamp+","+p.gphotos_path+", this photo DOES NOT HAVE CLOSEST IMAGE");
-            }
+        ).forEach( p => {
+            console.log(p.id+" => "+p.timestamp+","+p.gphotos_path+", this photo DOES NOT HAVE CLOSEST IMAGE");
         });
     }),
     new Action("gphotos_count","shows the count of gphotos",false,true,function(images,gphotos) {
@@ -80,40 +82,62 @@ const _ACTIONS = [
             console.log(albums);
         });
     }),
-    new Action("gphotos_updateAlbum=albumId","update cached information all GPhotos in given album",false,true,function(images,gphotos,albumId) {
-        console.log("albumId="+albumId);
+    new Action("gphotos_readAlbum=albumId","update cached information all GPhotos in given album",false,true,function(images,gphotos,albumId) {
         gphotos.read(albumId).then( (gphotos) => {
             console.log(gphotos.storage);
             console.log("Re-read information about gphotos in album '"+albumId+"'");
         });
     }),
-    new Action("gphotos_update","update cached information about all gphotos",false,true,function(images,gphotos) {
+    new Action("gphotos_read","update cached information about all gphotos",false,true,function(images,gphotos) {
         gphotos.read().then( (gphotos) => {
             console.log("Re-read information about "+gphotos.storage.size+" gphotos");
         });
     }),
-    new Action("gphotos_remove=gphotoid","deletes a photo with given ID",false,true,function(images,gphotos,gphotoid) {
-        gphotos.remove(gphotoid).then( (result) => {
-            if( result ) {
-                console.log("There was an error ("+result+")");
-            }
-        });
-    }),
     new Action("gphotos_getByMediaItemId=mediaItemId","given a media item ID in GPhotos, retrieve its properties",false,true,function(images,gphotos,mediaItemId) { 
-        gphotos.getByMediaItemId(mediaItemId).then( (gphoto) => {
-            console.log(JSON.stringify(gphoto,undefined,2));
+        mediaItemIds = (mediaItemIds.constructor==String) ? [mediaItemIds] : mediaItemIds;
+        mediaItemIds.forEach( mediaItemId => {
+            gphotos.getByMediaItemId(mediaItemId).then( (gphoto) => {
+                console.log(JSON.stringify(gphoto,undefined,2));
+            });
         });
     }),
-    new Action("gphotos_updateId=gphotoid","refresh information about given gphotoid in storage with information in GPhotos",false,true,function(images,gphotos,gphotoid) {
-        gphotos.updateId(gphotoid).then( (gphoto) => {
-            console.log(JSON.stringify(gphoto,undefined,2));
+    new Action("gphotos_addByMediaItemId=mediaItemId","given a media item ID retrieve it from GPhotos and add to the cache",false,true,function(images,gphotos,mediaItemId) { 
+        mediaItemIds = (mediaItemIds.constructor==String) ? [mediaItemIds] : mediaItemIds;
+        mediaItemIds.forEach( mediaItemId => {
+            gphotos.getByMediaItemId(mediaItemId).then( (gphoto) => {
+                if( gphotos.storage.add(gphoto.id,gphoto) ) {
+                    console.log("Added "+JSON.stringify(gphoto,undefined,2));
+                }
+                else {
+                    console.log("Could not add "+JSON.stringify(gphoto,undefined,2));
+                }
+            });
+        });
+    }),
+    new Action("gphotos_updateId=gphotoid","refresh information about given gphotoid in storage with information from GPhotos",false,true,function(images,gphotos,gphotoids) {
+        gphotoids = (gphotoids.constructor===String) ? [gphotoids] : gphotoids;
+        gphotoids.forEach( gphotoid => {
+            gphotos.updateId(gphotoid).then( (item) => {
+                console.log("Updated "+JSON.stringify(item,undefined,2));
+	          }).catch( (err) => {
+	              console.log("There was an error ("+err+")");
+	          });
+        });
+    }),
+    new Action("gphotos_removeId=gphotoid","deletes an image with given id fomr the file system",false,true,function(images,gphotos,gphotoid) {
+        gphotoids = (gphotoids.constructor===String) ? [gphotoids] : gphotoids;
+        gphotoids.forEach( gphotoid => {
+            gphotos.removeId(gphotoid).then( (item) => {
+	              console.log("Removed "+JSON.stringify(item,undefined,2));
+            }).catch( (err) => {
+                console.log("There was an error ("+result+")");
+            });
         });
     }),
     new Action("// Actions on images (i.e. file system)"),
     new Action("images_showYears","shows the number of images for each year",true,false,function(images,gphotos) {
         let by_years = images.storage.rehash( (i) => {
-            console.log(i);
-            i.timestamp.getFullYear()
+            return i.timestamp.getFullYear()
         },true);
         for( let year in by_years ) {
             console.log(year+": "+by_years[year].length+" images");
@@ -148,43 +172,57 @@ const _ACTIONS = [
         });
     }),
     new Action("images_minusGPhotosYear=year","shows images that are not among gphotos for given year",true,true,function(images,gphotos,year) {
-        Object.values(common.subtract_storables(
+        common.subtract_storables(
             images.storage.filter( i => (i.timestamp.getFullYear()==year) ),
-            gphotos.storage.filter( p => (p.timestamp.getFullYear()==year) )
-        )).forEach( i => {
-            if( i.closest_match ) {
-                console.log(i.id+" => "+Date.toEXIFString(i.timestamp)+","+i.path+",closest is "+Date.toEXIFString(i.closest_match.timestamp)+".\nTry:\n"+
-                            "/usr/bin/exiftool '-AllDates="+Date.toEXIFString(i.closest_match.timestamp)+"' '"+i.path+"'\n"+
-                            process.argv[0]+" CacheTool.js "+
-                            "--images "+
-                            "--update "+
-                            "'--where=id=^"+i.id+"$' "+
-                            "--from_path");
+            gphotos.storage.filter( p => (p.timestamp.getFullYear()==year) ),
+            ( im, closest, hours_diff, all_same_gpath ) => {
+                if( hours_diff<12 )
+                    return false;
+                console.log("Image "+im.id+" => "+Date.toEXIFString(im.timestamp)+" is different by "+hours_diff+" hours from gphoto "+closest.id+" => "+Date.toEXIFString(closest.timestamp)+" ("+closest.productUrl+")\nTry:\n"+
+                            process.argv[1]+" --images_updateId="+im.id+" --gphotos_updateId="+closest.id+"\n");
+                return false;
             }
-            else {
-                console.log(i.id+" => "+Date.toEXIFString(i.timestamp)+","+i.path+", this image DOES NOT HAVE CLOSEST PHOTO");
-            }
+        ).forEach( im => {
+            console.log("Image "+im.id+" => "+Date.toEXIFString(im.timestamp)+","+im.path+", this image DOES NOT HAVE CLOSEST PHOTO");
         });
     }),
     new Action("images_uploadMissingGPhotosYear=year","finds all images that are not among GPhotos for a given year and uploads them to GPhotos",true,true,function(images,gphotos,year) {
-        let upload_promises = [];
-        Object.values(common.subtract_storables(
+        let difference = common.subtract_storables(
             images.storage.filter( i => (i.timestamp.getFullYear()==year) ),
-            gphotos.storage.filter( p => (p.timestamp.getFullYear()==year) )
-        )).forEach( i => {
-            if( i.closest_match ) {
-                console.log(i.id+" => "+Date.toEXIFString(i.timestamp)+","+i.path+",closest is "+Date.toEXIFString(i.closest_match.timestamp));
+            gphotos.storage.filter( p => (p.timestamp.getFullYear()==year) ),
+            'image',
+            'gphoto'
+        );
+        if( difference.not_found.length ) {
+            if( common.get_answer("Found "+difference.not_found.length+" images that are not in gphotos:\n"+
+                                  "\t"+difference.not_found.map(i => "{"+i.id+","+i.gphotos_path+"}").join("\n\t")+"\n"+
+                                  "Upload them?","y")=="y" ) {
+                Promises.all(difference.not_found.map( i => gphotos.upload(i))).then( (result) => {
+                    if( result.join("")!="" ) {
+                        console.log("There were "+result.length+" errors during upload:\n\t"+result.join("\n\t")+"\n");
+                    }
+                });
             }
-            else {
-                console.log(i.id+" => "+Date.toEXIFString(i.timestamp)+","+i.path+", have to upload it");
-                upload_promises.push(gphotos.upload(i));
+        }
+        if( difference.same_gphotos_path.length ) {
+            if( common.get_answer("Found "+difference.same_gphotos_path.length+" cases when an image and a photo have the same gphotos_path but different timestamps:\n"+
+                                  "\t"+difference.same_gphotos_path.map(e=>(e.diff+"h: "+e.image.id+","+e.gphoto.id)).join("\n\t")+"\n"+
+                                  "Replace these gphotos with images?","y")=="y" ) {
+                Promise.all(difference.same_gphotos_path.map( (e) => gphotos.upload(e.image).then( (result) => {
+                    if( result )
+                        return "There was an error in uploading of image '"+e.image.id+"' ("+result+")";
+                    return gphotos.removeId(e.gphoto.id).then( (gphotos) => {
+                        return "";
+                    }).catch( (err) => {
+                        return "Cannot remove photo '"+e.gphoto.id+"' ("+err+")";
+                    });
+                }))).then( (result) => {
+                    if( result.join("")!="" ) {
+                        console.log("There were "+result.length+" errors during upload:\n\t"+result.join("\n\t")+"\n");
+                    }
+                });
             }
-        });
-        Promise.all(upload_promises).then( (result)=> {
-            if( result.join("")!="" ) {
-                console.log("There were "+result.length+" errors:\n\t"+result.join("\n\t")+"\n");
-            }
-        });
+        }
     }),
     new Action("images_checkExifTimestampsYear=year","reads images of given year and makes sure that their path location matches their EXIF timestamps",true,false,function(images,gphotos,year) {
         let changed_files = images.check_exif_timestamps(i => i.timestamp.getFullYear()==year);
@@ -203,16 +241,23 @@ const _ACTIONS = [
             console.log("Updated cache information about images of year "+year);
         });
     }),
-    new Action("images_update","updates cached information about all images",true,false,function(images,gphotos) {
+    new Action("images_read","updates cached information about all images",true,false,function(images,gphotos) {
         images.read(common.imagesRoot).then( (images) => {
             console.log("Update cache information about "+images.storage.toArray().length+" images");
         });
     }),
-    new Action("images_remove=imageid","deletes an image with given id fomr the file system",true,false,function(images,gphotos,imageid) {
-        images.remove(imageid).then( (result) => {
-            if( result ) {
-                console.log("There was an error ("+result+")");
-            }
+    new Action("images_updateId=imageid","Re-reads file system and refreshes cache for image with given ID",true,false,function(images,gphotos,imageid) {
+        images.updateId(imageid).then( (item) => {
+            console.log("Updated "+JSON.stringify(item,undefined,2));
+        }).catch( (err) => {
+            console.log("There was an error ("+err+")");
+        });
+    }),
+    new Action("images_removeId=imageid","deletes an image with given id fomr the file system",true,false,function(images,gphotos,imageid) {
+        images.removeId(imageid).then( (item) => {
+            console.log("Removed "+JSON.stringify(item,undefined,2));
+        }).catch( (err) => {
+            console.log("There was an error ("+result+")");
         });
     }),
     new Action("// Other"),
@@ -250,14 +295,13 @@ const _ACTIONS = [
 /////////////////////////////////////////////////////////////////
 let valid_actions = _ACTIONS.filter( a => common.argv.hasOwnProperty(a.name_parts[0]) && a.proc );
 if( valid_actions.length ) {
-    let images,gphotos;
+    let imagesPromise = valid_actions.filter(a=>a.needs_images).length ? (new Images()).read(common.imagesRoot).catch( (err) => {
+        console.log("There was an error getting images ("+err+")");
+    }) : undefined;
+    let gphotosPromise = valid_actions.filter(a=>a.needs_gphotos).length ? (new GPhotos()).read('').catch( (err) => {
+        console.log("There was an error getting photos ("+err+")");
+    }) : undefined;
     valid_actions.forEach( (a) => {
-        let imagesPromise = a.needs_images ? (images ? images : (new Images()).read(common.imagesRoot).catch( (err) => {
-            console.log("There was an error getting images ("+err+")");
-        })) : undefined;
-        let gphotosPromise = a.needs_gphotos ? (gphotos ? gphotos : (new GPhotos()).read().catch( (err) => {
-            console.log("There was an error getting gphotos ("+err+")");
-        })) : undefined;
         a.call(imagesPromise,gphotosPromise,common.argv[a.name_parts[0]]).catch( (err) => {
             console.log(err);
             console.log("Exception from handler of "+a.name+" ("+err+")");

@@ -148,11 +148,13 @@ module.exports = {
         let result = require('readline-sync').question(prompt+' (default is '+default_answer+'): ');
         return (result=='') ? default_answer : result;    
     },
-    subtract_storables( s1, s2 ) {
-        let result = [];
-        const ms_in_hour   = 60*60*1000;
-        const common       = module.exports;
-        const s2_by_gpath  = Object.rehash(s2,i => i.gphotos_path.toLowerCase(),1);
+    subtract_storables( s1, s2, s1_name, s2_name ) {
+        let result = {
+            not_found         : [],  // array of elements in s1 that we didn't find anywhere in s2
+            same_gphotos_path : [],  // values are [s1 element,s2 element,timestamp_difference_in_hours]
+        };
+        const ms_in_hour  = 60*60*1000;
+        const s2_by_gpath = Object.rehash(s2,i => i.gphotos_path.toLowerCase(),1);
         for( let k in s1 ) {
             let a1 = s1[k];
             if( s2.hasOwnProperty(k) ) {
@@ -161,32 +163,21 @@ module.exports = {
             else {
                 let a1_gpath = a1.gphotos_path.toLowerCase();
                 if( s2_by_gpath.hasOwnProperty(a1_gpath) ) {
-
-                    // Let see if there is an identically titled item in a2 with timestamp
-                    // "close enough" to the timestamp of item in a1
-                    let search_results = s2_by_gpath[a1_gpath].reduce( (accumulator,element) => {
-                        let diff = Math.abs(element.timestamp.valueOf()-a1.timestamp.valueOf());
-                        return (diff<accumulator.diff)? {'diff':diff,'element':element} : accumulator;
-                    },{'diff':Number.POSITIVE_INFINITY,'element':undefined});
-
-                    if( search_results.diff<12*ms_in_hour ) {
-                        // this is "close enough"
-                    }
-                    else if( search_results.diff<24*ms_in_hour ) {
-                        common.log(2,"Found items with ID '"+k+"' matching item '"+search_results.element.id+"' with timestamps different by "+(Math.abs(search_results.diff)/(60*1000))+" minutes");
-                    }
-                    else {
-                        // Have the same title but too different timestamps
-                        a1.closest_match = search_results.element;
-                        result.push(a1);
-                    }
+                    s2_by_gpath[a1_gpath].forEach( a2 => {
+                        let timestamp_difference_in_hours = Math.round(((Math.abs(a2.timestamp.valueOf()-a1.timestamp.valueOf()))/ms_in_hour)*100)/100;
+                        result.same_gphotos_path.push({
+                            [s1_name] : a1,
+                            [s2_name] : a2,
+                            diff      : timestamp_difference_in_hours
+                        });
+                    });
                 }
                 else {
-                    // The object in s1 has a title not matching anything in s2
-                    result.push(a1);
+                    result.not_found.push(a1);
                 }
             }
         }
+        result.same_gphotos_path = result.same_gphotos_path.sort((e1,e2)=>(e2.diff-e1.diff));
         return result;
     }
 }
