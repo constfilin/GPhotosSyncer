@@ -478,7 +478,7 @@ class Images {
         // only if a new different path was passed or if we have no storage at all)
         if( this.storage && (path==this.storage_path) )
             return Promise.resolve(this);
-        this.constructor.get_image_files(this.constructor.get_folder_filepaths(path,[])).then( (imagefiles) => {
+        return this.constructor.get_image_files(this.constructor.get_folder_filepaths(path,[])).then( (imagefiles) => {
             if( this.storage && path.indexOf(this.storage_path)==0 ) {
                 // We just have re-read a part of the file tree represented by this.storage. Let's update this.storage
                 common.log(3,"Removing from storage everything that starts with '"+path+"'");

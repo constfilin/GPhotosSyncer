@@ -109,7 +109,7 @@ class GPhotos {
     }
     get_add_gphoto_promise( context, mediaItem ) {
         return new Promise( (resolve,reject) => {
-            get_mediaitem_content_disposition_promise(mediaItem).then( (content_disposition) => {
+            this.get_mediaitem_content_disposition_promise(mediaItem).then( (content_disposition) => {
                 let gphoto = new GPhoto(mediaItem,content_disposition);
                 context.storage.add(gphoto.id,gphoto);
                 common.log(3,"Context="+context+",loaded photo '"+gphoto.gphotos_path+"'");
