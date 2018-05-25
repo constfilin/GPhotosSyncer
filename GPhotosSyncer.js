@@ -93,7 +93,7 @@ const _ACTIONS = [
             console.log("Re-read information about "+gphotos.storage.size+" gphotos");
         });
     }),
-    new Action("gphotos_getByMediaItemId=mediaItemId","given a media item ID in GPhotos, retrieve its properties",false,true,function(images,gphotos,mediaItemId) { 
+    new Action("gphotos_getByMediaItemId=mediaItemId","given a media item ID in GPhotos, retrieve its properties",false,true,function(images,gphotos,mediaItemIds) { 
         mediaItemIds = (mediaItemIds.constructor==String) ? [mediaItemIds] : mediaItemIds;
         mediaItemIds.forEach( mediaItemId => {
             gphotos.getByMediaItemId(mediaItemId).then( (gphoto) => {
@@ -197,30 +197,27 @@ const _ACTIONS = [
             if( common.get_answer("Found "+difference.not_found.length+" images that are not in gphotos:\n"+
                                   "\t"+difference.not_found.map(i => "{"+i.id+","+i.gphotos_path+"}").join("\n\t")+"\n"+
                                   "Upload them?","y")=="y" ) {
-                Promises.all(difference.not_found.map( i => gphotos.upload(i))).then( (result) => {
-                    if( result.join("")!="" ) {
-                        console.log("There were "+result.length+" errors during upload:\n\t"+result.join("\n\t")+"\n");
-                    }
-                });
+                Promises.all(difference.not_found.map(im=>gphotos.upload(im).then( (gphoto) => {
+                    console.log("Image "+JSON.stringify(im,undefined,2)+" was uploaed to "+JSON.stringify(gphoto,undefined,2));
+                }).catch( (err) => {
+                    console.log("Count not upload image "+JSON.stringify(im,undefined,2)+" ("+err+")");
+                })));
             }
         }
         if( difference.same_gphotos_path.length ) {
             if( common.get_answer("Found "+difference.same_gphotos_path.length+" cases when an image and a photo have the same gphotos_path but different timestamps:\n"+
                                   "\t"+difference.same_gphotos_path.map(e=>(e.diff+"h: "+e.image.id+","+e.gphoto.id)).join("\n\t")+"\n"+
                                   "Replace these gphotos with images?","y")=="y" ) {
-                Promise.all(difference.same_gphotos_path.map( (e) => gphotos.upload(e.image).then( (result) => {
-                    if( result )
-                        return "There was an error in uploading of image '"+e.image.id+"' ("+result+")";
-                    return gphotos.removeId(e.gphoto.id).then( (gphotos) => {
-                        return "";
+                Promise.all(difference.same_gphotos_path.map( (e) => gphotos.upload(e.image).then( (gphoto) => {
+                    console.log("Image "+JSON.stringify(e.image,undefined,2)+" was uploaded to "+JSON.stringify(gphoto,undefined,2));
+                    return gphotos.removeId(e.gphoto.id).then( (gphoto) => {
+                       console.log("GPhotos '"+JSON.stringify(gphotos,undefined,2)+" was removed");
                     }).catch( (err) => {
-                        return "Cannot remove photo '"+e.gphoto.id+"' ("+err+")";
+                       console.log("Cannot remove gphoto '"+JSON.stringify(e.gphoto.id,undefined,2)+" ("+err+")");
                     });
-                }))).then( (result) => {
-                    if( result.join("")!="" ) {
-                        console.log("There were "+result.length+" errors during upload:\n\t"+result.join("\n\t")+"\n");
-                    }
-                });
+                }).catch( (err) => {
+                    console.log("Count not upload image "+JSON.stringify(im,undefined,2)+" ("+err+")");
+                })));
             }
         }
     }),
@@ -253,12 +250,28 @@ const _ACTIONS = [
             console.log("There was an error ("+err+")");
         });
     }),
-    new Action("images_removeId=imageid","deletes an image with given id fomr the file system",true,false,function(images,gphotos,imageid) {
+    new Action("images_removeId=imageid","deletes an image with given id from the file system",true,false,function(images,gphotos,imageid) {
         images.removeId(imageid).then( (item) => {
             console.log("Removed "+JSON.stringify(item,undefined,2));
         }).catch( (err) => {
             console.log("There was an error ("+result+")");
         });
+    }),
+    new Action("images_uploadId=imageid","(re-)uploads an image with given id to GPhotos",true,true,function(images,gphotos,imageids) {
+        imageids = (imageids.constructor==String) ? [imageids] : imageids;
+        imageids.forEach( (id) => {
+            let im = images.storage.get(id);
+            if( im ) {
+                gphotos.upload(im).then( (gphoto) => {
+                    console.log("Uploaded image "+JSON.stringify(im,undefined,2)+" to gphoto "+JSON.stringify(gphoto,undefined,2));
+                }).catch( (err) => {
+                    console.log("Cannot upload image "+JSON.stringify(im,undefined,2)+" ("+err+")");
+                });
+            }
+            else {
+                console.log("Image id '"+id+"' is not known");
+            }
+        })
     }),
     new Action("// Other"),
     new Action("deltaYear=year","shows differences in objects timestamped to particular year",true,true,function(images,gphotos,year) {

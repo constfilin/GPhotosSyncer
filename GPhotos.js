@@ -236,13 +236,16 @@ class GPhotos {
                     'headers': {
                         'Content-Type'           : 'application/octet-stream',
                         'Authorization'          : 'Bearer '+this.credentials.access_token,
-                        'X-Goog-Upload-File-Name': im.name /* this does not seem to work, instead name seems to be generated from the current date, e.g. 2018-05-23.jpg */
+                        'X-Goog-Upload-File-Name': im.gphotos_path  /* this does not seem to work, instead name seems to be generated from the current date, e.g. 2018-05-23.jpg */
                     },
                     'body'   : fs.readFileSync(im.path)
                 };
+
+                console.log(requestOptions.headers);
+
                 request.post(requestOptions,(err,response,body) => {
                     if( err ) {
-                        resolve(im.path+" bytes upload => "+err);
+                        reject(Error("Cannot upload bytes ("+err+")"));
                     }
                     else {
                         let upload_token = body;
@@ -266,18 +269,18 @@ class GPhotos {
                         }
                         request.post(requestOptions,(err,response,body) => {
                             if( err ) {
-                                resolve(im.path+" on batch create => "+err);
+                                reject(Error(im.path+" on batch create => "+err));
                             }
                             else if( body.error ) {
-                                resolve(body.error.message);
+                                reject(Error(body.error.message));
                             }
                             else if( !body.newMediaItemResults || body.newMediaItemResults.length!=1 ) {
-                                resolve(im.path+" on batch create didn't return newMediaItemResults");
+                                reject(Error(im.path+" on batch create didn't return newMediaItemResults"));
                             }
                             else {
                                 let nmir = body.newMediaItemResults[0];
                                 if( nmir.status.code || nmir.status.message!="OK" ) {
-                                    resolve(im.path+" status code is "+nmir.status.code+"("+nmir.status.message+")");
+                                    reject(Error(im.path+" status code is "+nmir.status.code+"("+nmir.status.message+")"));
                                 }
                                 else {
                                     // Photos are uploaded to GPhotos without filename (despite X-Goog-Upload-File-Name header, see above)
@@ -285,9 +288,9 @@ class GPhotos {
                                     let gphoto = new GPhoto(nmir.mediaItem,im.gphotos_path);
                                     // I have seen where description is not available immediately after download. Fill it in ourselves
                                     if( !gphoto.description )
-                                        gphoto.description = requestOptions.body.newMediaItems[0].description;
+                                        gphoto.description = im.gphotos_path.replace(/_/g,' ');
                                     this.storage.add(gphoto.id,gphoto);
-                                    resolve("");
+                                    resolve(gphoto);
                                 }
                             }
                         });
