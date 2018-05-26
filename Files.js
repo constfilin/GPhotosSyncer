@@ -9,7 +9,7 @@ const tmp           = require('tmp');
 const child_process = require('child_process');
 
 const common        = require('./common');
-const Storage       = require('./Storage');
+const Cache         = require('./Cache');
 
 let _UPDATE_FILE_PATH_ANSWER   = '2';
 let _LAST_EXIF_OFFSET          = undefined;
@@ -18,7 +18,7 @@ let _LAST_SET_EXIFDATE_ANSWER  = new Date("Invalid Date");
 /////////////////////////////////////////////////////////////////
 // classes
 /////////////////////////////////////////////////////////////////
-class ImageFile {
+class CachedFile {
     static get_exif_date_tags( include_extras ) {
         let basic = [
             "ModifyDate",
@@ -46,15 +46,15 @@ class ImageFile {
         ];
         return include_extras ? basic.concat(extras) : basic;
     }
-    static to_gphotos( s ) {
+    static get_gphotos_path( s ) {
         // do not forget about file name extensions (if any)
         return s.toLowerCase().replace(/[^a-z0-9]/ig,'_').replace(/_+/g,'_').replace(/^_/,'').replace(/_$/,'').replace(/_(jpe?g|png|mp4|mov|vfw)$/i,'.$1');
     }
     static init( self, path, all_exif_dates ) {
         // Paths
         self.path           = path;
-        self.relative_path  = path.substr(common.imagesRoot.length+1);
-        self.gphotos_path   = self.constructor.to_gphotos(self.relative_path);
+        self.relative_path  = path.substr(common.filesRoot.length+1);
+        self.gphotos_path   = self.constructor.get_gphotos_path(self.relative_path);
         self.name           = self.relative_path.replace(/^.+\/([^\/]+)$/,"$1");
         // Dates
         self.path_date      = self.guess_date_from_path(self.relative_path);
@@ -75,7 +75,7 @@ class ImageFile {
         return {'path':self.path,'all_exif_dates':Object.map(self.all_exif_dates,Date.toEXIFString)};
     }
     static deserialize( js ) {
-        return new ImageFile(js.path,Object.map(js.all_exif_dates,Date.fromEXIFString));
+        return new CachedFile(js.path,Object.map(js.all_exif_dates,Date.fromEXIFString));
     }
     guess_date_from_path( relative_path ) {
         // now match the relative_path to different regexps to figure out object date depending on its relative_path
@@ -175,7 +175,7 @@ class ImageFile {
             return ""; // sanity check
         try {
             // First rename creating necessary folders along the way
-            path_.substr(common.imagesRoot.length+1).split('/').reduce( (accumulator,basename) => {
+            path_.substr(common.filesRoot.length+1).split('/').reduce( (accumulator,basename) => {
                 let next_path = accumulator+'/'+basename;
                 if( next_path.length==path_.length ) {
                     fs.renameSync(this.path,path_);
@@ -191,7 +191,7 @@ class ImageFile {
                     }
                 }
                 return next_path;
-            },common.imagesRoot);
+            },common.filesRoot);
 
             // See if the source folder is empty. If so then delete it
             let parent_path    = this.path.substr(0,this.path.length-this.name.length);
@@ -217,11 +217,11 @@ class ImageFile {
         this.constructor.init(this,path,all_exif_dates);
     }
     toString() {
-        return this.path;
+        return JSON.stringify(this,undefined,2);
     }
     check_exif_timestamps() {
         if( !this.exif_date )
-            throw Error("Image file was not properly initialized");
+            throw Error("CachedFile was not properly initialized");
 
         console.log(this);
 
@@ -232,7 +232,7 @@ class ImageFile {
 
             // do something else if case_number is 3 - this means that we "guessed" the date and the date
             // and they were not in the original file. Do not put it into the new file name either
-            return common.imagesRoot+"/"+
+            return common.filesRoot+"/"+
                 ts.getFullYear()+"/"+
                 common.pad_number(ts.getMonth()+1,2)+"."+common.month_names[ts.getMonth()+1]+"/"+
                 ((im.case_number!=3)?common.pad_number(ts.getDate(),2):"")+(im.path_parts.enddate?im.path_parts.enddate:"")+"/"+
@@ -286,7 +286,7 @@ class ImageFile {
         if( suggestions.path.timestamp && 
             suggestions.path.timestamp!=this.path ) {
             options[3] = [
-                "Move file to '"+suggestions.path.timestamp.substr(common.imagesRoot.length+1)+"'",
+                "Move file to '"+suggestions.path.timestamp.substr(common.filesRoot.length+1)+"'",
                 () => this.change_path(suggestions.path.timestamp)
             ];
         }
@@ -294,7 +294,7 @@ class ImageFile {
             (suggestions.path.exif_date!=this.path) && 
             (suggestions.path.exif_date!=suggestions.path.timestamp) ) {
             options[4] = [
-                "Move file to '"+suggestions.path.exif_date.substr(common.imagesRoot.length+1)+"'",
+                "Move file to '"+suggestions.path.exif_date.substr(common.filesRoot.length+1)+"'",
                 () => this.change_path(suggestions.path.exif_date)
             ];
         }
@@ -303,7 +303,7 @@ class ImageFile {
             (suggestions.path.closest_exif_date!=suggestions.path.timestamp) && 
             (suggestions.path.closest_exif_date!=suggestions.path.exif_date) ) {
             options[5] = [
-                "Move file to '"+suggestions.path.closest_exif_date.substr(common.imagesRoot.length+1)+"'",
+                "Move file to '"+suggestions.path.closest_exif_date.substr(common.filesRoot.length+1)+"'",
                 () => this.change_path(suggestions.path.closest_exif_date)
             ];
         }
@@ -316,10 +316,10 @@ class ImageFile {
                 }
             ];
             options[7] = [
-                "Move file to somewhere else under '"+common.imagesRoot+"'",
+                "Move file to somewhere else under '"+common.filesRoot+"'",
                 () => {
-                    let new_path = common.get_answer("Enter new path under '"+common.imagesRoot+"'");
-                    return (new_path.length>0) ? this.change_path(common.imagesRoot+"/"+new_path) : "wrong path name";
+                    let new_path = common.get_answer("Enter new path under '"+common.filesRoot+"'");
+                    return (new_path.length>0) ? this.change_path(common.filesRoot+"/"+new_path) : "wrong path name";
                 }
             ]
             options[8] = [
@@ -331,7 +331,7 @@ class ImageFile {
                 }
             ];
             options[9] = [
-                "Dump ImageFile object",
+                "Dump CachedFile object",
                 () => {
                     console.log(JSON.stringify(this));
                     return 'choose again';
@@ -359,7 +359,7 @@ class ImageFile {
         }
     }
 }
-class Images {
+class Files {
     // private methods
     static get_folder_filepaths( path, filepaths ) {
         // Read the file system
@@ -393,7 +393,7 @@ class Images {
         });
         return filepaths;
     }
-    static get_image_files( filepaths ) {
+    static get_cached_files( filepaths ) {
         if( filepaths.length==0 )
             return Promise.resolve([]);
         let perl_cmdline_filename = tmp.tmpNameSync();
@@ -403,7 +403,7 @@ class Images {
                 "-ignoreMinorErrors\n"+
                 "-charset\n"+
                 "filename=utf8\n"+
-                ImageFile.get_exif_date_tags(1).map(t=>"-"+t).join("\n")+"\n"+
+                CachedFile.get_exif_date_tags(1).map(t=>"-"+t).join("\n")+"\n"+
                 filepaths.join("\n");
             return fs.writeFile(perl_cmdline_filename,data,{mode:0x180/*=0600*/},(err) => {
                 if( err ) {
@@ -439,7 +439,7 @@ class Images {
             let files_without_exif_info = filepaths.reduce( (accumulator,fp) => {
                 if( exifinfo.hasOwnProperty(fp) ) {
                     // Enumerate all EXIF properties, convert them to dates and choose the minimal date as the date when the image was made 
-                    result.push(new ImageFile(fp,Object.filter(Object.map(exifinfo[fp],v=>Date.fromEXIFString(v)),dt=>(dt.toString()!='Invalid Date'))));
+                    result.push(new CachedFile(fp,Object.filter(Object.map(exifinfo[fp],v=>Date.fromEXIFString(v)),dt=>(dt.toString()!='Invalid Date'))));
                 }
                 else {
                     if( accumulator++<10 ) {
@@ -454,83 +454,82 @@ class Images {
             return result;
         });
     }
-    //
+    ////////////////////////////////////////////////////////////////////////
+    // Standard interface
+    ////////////////////////////////////////////////////////////////////////
     constructor() {
         try {
-            this.storage = new Storage(common.imagesCache);
-            this.storage.storage = this.storage.map(ImageFile.deserialize);
-            this.storage_path = common.imagesRoot;
-            common.log(2,"Successfully restored images from cache '"+common.imagesCache+"', number of images is "+this.storage.size);
+            this.cache = new Cache(Object.map(require(common.filesCache),CachedFile.deserialize));
+            this.cache_path = common.filesRoot;
+            common.log(2,"Successfully restored files from cache '"+common.filesCache+"', number of files is "+this.cache.size);
         }
         catch( err ) {
-            this.storage = undefined;
+            this.cache = undefined;
         }
         process.on('exit', (code) => {
-            if( this.storage && (this.storage_path==common.imagesRoot) ) {
-                // TODO: check if storage has changed (probably by counting an SHA hash of it)
-                common.log(2,"Storing images to '"+common.imagesCache+"'");
-                fs.writeFileSync(common.imagesCache,JSON.stringify(this.storage.map(ImageFile.serialize)));
+            if( this.cache && (this.cache_path==common.filesRoot) ) {
+                // TODO: check if cache has changed (probably by counting an SHA hash of it)
+                common.log(2,"Caching files to '"+common.filesCache+"'");
+                fs.writeFileSync(common.filesCache,JSON.stringify(this.cache.map(CachedFile.serialize)));
             }
         });
     }
+    load( filePath ) {
+        return this.constructor.get_cached_files([filePath]).then( (cachedfiles) => {
+            return cachedfiles[0];
+        });
+    }
+    updateId( id ) {
+        let im = this.cache.get(id);
+        if( !im )
+            throw Error("id '"+id+"' is not known");
+        return this.load(im.path).then( (item) => {
+            this.cache.del(id);
+            return this.cache.update(item);
+        });
+    }
     read( path ) {
-        // If the storage already represents this path then exit immediately (i.e. we re-read the file system
-        // only if a new different path was passed or if we have no storage at all)
-        if( this.storage && (path==this.storage_path) )
+        // If the cache already represents this path then exit immediately (i.e. we re-read the file system
+        // only if a new different path was passed or if we have no cache at all)
+        if( this.cache && (path==this.cache_path) )
             return Promise.resolve(this);
-        return this.constructor.get_image_files(this.constructor.get_folder_filepaths(path,[])).then( (imagefiles) => {
-            if( this.storage && path.indexOf(this.storage_path)==0 ) {
-                // We just have re-read a part of the file tree represented by this.storage. Let's update this.storage
-                common.log(3,"Removing from storage everything that starts with '"+path+"'");
-                for( let key in this.storage.storage ) {
-                    if( this.storage.storage[key].path.indexOf(path)==0 ) {
-                        this.storage.del(key);
+        return this.constructor.get_cached_files(this.constructor.get_folder_filepaths(path,[])).then( (cachedfiles) => {
+            if( this.cache && path.indexOf(this.cache_path)==0 ) {
+                // We just have re-read a part of the file tree represented by this.cache. Let's update this.cache
+                common.log(3,"Removing from cache everything that starts with '"+path+"'");
+                for( let key in this.cache.storage ) {
+                    if( this.cache.storage[key].path.indexOf(path)==0 ) {
+                        this.cache.del(key);
                     }
                 }
-                common.log(3,"Adding to storage "+storage.size+" files that are in '"+path+"'");
             }
             else {
-                // We either didn't have storage at all or re-read a completely independent part of the filesystem
-                this.storage_path = path;
-                this.storage      = new Storage();
+                // We either didn't have cache at all or re-read a completely independent part of the filesystem
+                this.cache_path = path;
+                this.cache      = new Cache();
             }
-            imagefiles.forEach(im => this.storage.add(im.id,im));
+            cachedfiles.forEach(item=>this.cache.add(item));
             return this;
         });
     }        
+    ////////////////////////////////////////////////////////////////////////
+    // Interface to File System operations
+    ////////////////////////////////////////////////////////////////////////
     check_exif_timestamps( predicate ) {
-        let changed_files = Object.values(this.storage.filter(predicate)).filter( (imageFile) => {
+        let changed_files = Object.values(this.cache.filter(predicate)).filter( (cachedFile) => {
             // Detect if the file has changed by compary JSON representations of it before and after
-            let oldid   = imageFile.id;
-            let oldfile = JSON.stringify(imageFile); 
-            imageFile.check_exif_timestamps();
-            if( oldfile==JSON.stringify(imageFile) ) 
+            let oldid   = cachedFile.id;
+            let oldfile = cachedFile.toString(); 
+            cachedFile.check_exif_timestamps();
+            if( oldfile==cachedFile.toString() ) 
                 return false;
-            if( oldid!=imageFile.id ) {
-                this.storage.del(oldid);
-                this.storage.add(imageFile.id,imageFile);
+            if( oldid!=cachedFile.id ) {
+                this.cache.del(oldid);
+                this.cache.add(cachedFile);
             }
             return true;
         });
         return changed_files.length;
     }
-    removeId( id ) {
-        let im  = this.storage.del(id);
-        if( !im ) 
-            throw Error("id '"+id+" is not known");
-        fs.unlinkSync(im.path);
-        return Promise.resolve(im);
-    }
-    updateId( id ) {
-        let im = this.storage.get(id);
-        if( !im )
-            throw Error("id '"+id+"' is not known");
-        return this.constructor.get_image_files([im.path]).then( (imagefiles) => {
-            this.storage.del(id);
-            im = imagefiles[0];
-            this.storage.add(im.id,im);
-            return im;
-        });
-    }
 }
-module.exports = Images;
+module.exports = Files;

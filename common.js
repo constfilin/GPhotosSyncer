@@ -101,9 +101,9 @@ Date.value_to_offset = function( value ) {
 // module exports
 /////////////////////////////////////////////////////////////////
 module.exports = {
-    imagesRoot        : "/media/cf/Passport500/public/Video",
-    imagesCache       : './allimages.json',
-    photosCache       : './allphotos.json',
+    filesRoot         : "/media/cf/Passport500/public/Video",
+    filesCache        : './files.json',
+    gphotosCache      : './gphotos.json',
     month_names : [
         '',
         'January',
@@ -148,9 +148,9 @@ module.exports = {
         let result = require('readline-sync').question(prompt+' (default is '+default_answer+'): ');
         return (result=='') ? default_answer : result;    
     },
-    subtract_storables( s1, s2, s1_name, s2_name ) {
+    get_difference( s1, s2, s1_name, s2_name ) {
         let result = {
-            not_found         : [],  // array of elements in s1 that we didn't find anywhere in s2
+            missing           : [],  // array of elements in s1 that we didn't find anywhere in s2
             same_gphotos_path : [],  // values are [s1 element,s2 element,timestamp_difference_in_hours]
         };
         const ms_in_hour  = 60*60*1000;
@@ -173,7 +173,7 @@ module.exports = {
                     });
                 }
                 else {
-                    result.not_found.push(a1);
+                    result.missing.push(a1);
                 }
             }
         }
