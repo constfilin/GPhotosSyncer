@@ -31,6 +31,7 @@ class CachedGPhoto {
         this.timestamp    = new Date(mediaItem.mediaMetadata.creationTime);
         this.key          = mediaItem.id;
         this.productUrl   = mediaItem.productUrl;
+        this.baseUrl      = mediaItem.baseUrl;
         this.description  = mediaItem.description;
         this.mimeType     = mediaItem.mimeType;
         this.mediaMetadata= mediaItem.mediaMetadata;
@@ -198,6 +199,28 @@ class GPhotos {
             });
         });
     }
+    get_media_item_promise( mediaItemId ) { 
+        return new Promise( (resolve,reject) => {
+            const requestOptions = {
+                'json'    : true,
+                'url'     : 'https://photoslibrary.googleapis.com/v1/mediaItems/'+mediaItemId,
+                'headers' : {
+                    'Authorization' : 'Bearer '+this.credentials.access_token
+                }
+            };
+            request.get(requestOptions,(err,response,body) => {
+                if( err ) {
+                    reject(err);
+                }
+                else if( body.error ) {
+                    reject(Error(body.error.message));
+                }
+                else {
+                    resolve(body);
+                }
+            });
+        });
+    }
     login() {
         if( this.credentials )
             return Promise.resolve(this);
@@ -229,31 +252,11 @@ class GPhotos {
         });
     }
     load( mediaItemId ) {
-        return this.login().then( () => {
-            return new Promise( (resolve,reject) => {
-                const requestOptions = {
-                    'json'    : true,
-                    'url'     : 'https://photoslibrary.googleapis.com/v1/mediaItems/'+mediaItemId,
-                    'headers' : {
-                        'Authorization' : 'Bearer '+this.credentials.access_token
-                    }
-                };
-                request.get(requestOptions,(err,response,body) => {
-                    if( err ) {
-                        reject(err);
-                    }
-                    else if( body.error ) {
-                        reject(Error(body.error.message));
-                    }
-                    else {
-                        let mediaItem = body;
-                        this.get_mediaitem_content_disposition_promise(mediaItem).then( (content_disposition) => {
-                            resolve(new CachedGPhoto(mediaItem,content_disposition));
-                        }).catch( (err) => {
-                            reject(Error("Cannot get content disposition ("+err+")"));
-                        });
-                    }
-                });
+        return this.get_media_item_promise(mediaItemId).then( (mediaItem) => {
+            this.get_mediaitem_content_disposition_promise(mediaItem).then( (content_disposition) => {
+                return new CachedGPhoto(mediaItem,content_disposition);
+            }).catch( (err) => {
+                throw Error("Cannot get content disposition ("+err+")");
             });
         });
     }
@@ -294,118 +297,153 @@ class GPhotos {
         // Separately, as pages are loaded, the code creates (due to https://issuetracker.google.com/issues/79656863) promises 
         // to load titles of the media items. These are put into ReadContext.addgphotos promises and the code waits on all
         // these addgphotos promises before resolving the main "get photos" promise.
-        return this.login().then( () => {
-            let context = new ReadContext(cache,albumId);
-            context.pages.add(this.get_page_promise(context));
-            return Promise.all(context.pages.promises).then( () => {
-                common.log(1,"All pages have been loaded ("+context+")");
-                return Promise.all(context.addgphotos.promises);
-            }).catch( (err) => {
-                common.log(1,"There was an error loading pages ("+err+")");
-                throw err;
+        let context = new ReadContext(cache,albumId);
+        context.pages.add(this.get_page_promise(context));
+        return Promise.all(context.pages.promises).then( () => {
+            common.log(1,"All pages have been loaded ("+context+")");
+            return Promise.all(context.addgphotos.promises).then( () => {
+                return this;
             });
-        }).then( () => {
-            this.cache         = cache;
-            this.cache_albumId = albumId;
-            return this;
+        }).catch( (err) => {
+            common.log(1,"There was an error loading pages ("+err+")");
+            throw err;
         });
     }
     ////////////////////////////////////////////////////////////////////////
     // Interface to GPhotos specific operations
     ////////////////////////////////////////////////////////////////////////
     getAlbums( albums ) {
-        return this.login().then( () => {
-            return new Promise( (resolve,reject) => {
+        return new Promise( (resolve,reject) => {
+            const requestOptions = {
+                'url'     : 'https://photoslibrary.googleapis.com/v1/albums',
+                'headers' : {
+                    'Authorization' : 'Bearer '+this.credentials.access_token
+                },
+                'json'    : true
+            };
+            request.get(requestOptions,(err,response,body) => {
+                if( err ) {
+                    reject(err);
+                }
+                else if( body.error ) {
+                    reject(Error(body.error.message));
+                }
+                else if( body.hasOwnProperty('albums') ) {
+                    resolve(Object.map(body.albums, a=> {
+                        delete a.coverPhotoBaseUrl;
+                        delete a.productUrl;
+                        return a;
+                    }));
+                }
+                else {
+                    reject(Error("Body does not have 'albums'"));
+                }
+            });
+        });
+    }
+    upload( im ) {
+        return new Promise( (resolve,reject) => {
+            let requestOptions = {
+                'url'    : 'https://photoslibrary.googleapis.com/v1/uploads',
+                'headers': {
+                    'Content-Type'           : 'application/octet-stream',
+                    'Authorization'          : 'Bearer '+this.credentials.access_token,
+                    'X-Goog-Upload-File-Name': im.gphotos_path  /* this does not seem to work, instead name seems to be generated from the current date, e.g. 2018-05-23.jpg */
+                },
+                'body'   : fs.readFileSync(im.path)
+            };
+            request.post(requestOptions,(err,response,body) => {
+                if( err ) {
+                    reject(Error("Cannot upload bytes ("+err+")"));
+                }
+                else {
+                    let upload_token = body;
+                    requestOptions = {
+                        'json'    : true,
+                        'url'     : 'https://photoslibrary.googleapis.com/v1/mediaItems:batchCreate',
+                        'headers' : {
+                            'Content-Type'   : 'application/json',
+                            'Authorization'  : 'Bearer '+this.credentials.access_token
+                        },
+                        body      : {
+                            newMediaItems : [
+                                {
+                                    'description' : im.gphotos_path.replace(/_/g,' '),
+                                    'simpleMediaItem' : {
+                                        'uploadToken' : upload_token
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                    request.post(requestOptions,(err,response,body) => {
+                        if( err ) {
+                            reject(Error(im.path+" on batch create => "+err));
+                        }
+                        else if( body.error ) {
+                            reject(Error(body.error.message));
+                        }
+                        else if( !body.newMediaItemResults || body.newMediaItemResults.length!=1 ) {
+                            reject(Error(im.path+" on batch create didn't return newMediaItemResults"));
+                        }
+                        else {
+                            let nmir = body.newMediaItemResults[0];
+                            if( nmir.status.code || nmir.status.message!="OK" ) {
+                                reject(Error(im.path+" status code is "+nmir.status.code+"("+nmir.status.message+")"));
+                            }
+                            else {
+                                // Photos are uploaded to GPhotos without filename (despite X-Goog-Upload-File-Name header, see above)
+                                // Therefore when we need to preserve the gphotos_path in the cache by copiyng it from the original
+                                let gphoto = new CachedGPhoto(nmir.mediaItem,im.gphotos_path);
+                                // I have seen where description is not available immediately after download. Fill it in ourselves
+                                if( !gphoto.description )
+                                    gphoto.description = im.gphotos_path.replace(/_/g,' ');
+                                resolve(this.cache.add(gphoto));
+                            }
+                        }
+                    });
+                }
+            });
+        });
+    }
+    download( gphoto ) {
+        return new Promise( (resolve,reject) => {
+            // TODO: figure out how to get the *original* uploaded bytes, not the bytes stropped o EXIF info.
+            // According to https://developers.google.com/photos/library/guides/access-media-items#base-urls we cannot use
+            // stored baseUrl (if any) and have to re-download photo first. Except this time we do not content-disposition.
+            this.get_media_item_promise(gphoto.key).then( (mediaItem) => {
                 const requestOptions = {
-                    'url'     : 'https://photoslibrary.googleapis.com/v1/albums',
+                    'url' : mediaItem.baseUrl+"=w"+mediaItem.mediaMetadata.width+"-h"+mediaItem.mediaMetadata.height,
                     'headers' : {
-                        'Authorization' : 'Bearer '+this.credentials.access_token
+                        'Authorization'  : 'Bearer '+this.credentials.access_token
                     },
-                    'json'    : true
+                    'encoding' : null
                 };
                 request.get(requestOptions,(err,response,body) => {
                     if( err ) {
                         reject(err);
                     }
-                    else if( body.error ) {
-                        reject(Error(body.error.message));
-                    }
-                    else if( body.hasOwnProperty('albums') ) {
-                        resolve(Object.map(body.albums, a=> {
-                            delete a.coverPhotoBaseUrl;
-                            delete a.productUrl;
-                            return a;
-                        }));
+                    else if( false ) {
+                        // TODO: add here a condition that makes sure that the bytes dowloaded are indeed a photo.
+                        // The problem is that GPhotos will respond with HTTP code 200 and message like http://prntscr.com/jnrha7 
+                        // even when client credentials are no sufficient. It should have responded with HTTP 403 instead
+                        reject(err);
                     }
                     else {
-                        reject(Error("Body does not have 'albums'"));
-                    }
-                });
-            });
-        });
-    }
-    upload( im ) {
-        return this.login().then( () => {
-            return new Promise( (resolve,reject) => {
-                let requestOptions = {
-                    'url'    : 'https://photoslibrary.googleapis.com/v1/uploads',
-                    'headers': {
-                        'Content-Type'           : 'application/octet-stream',
-                        'Authorization'          : 'Bearer '+this.credentials.access_token,
-                        'X-Goog-Upload-File-Name': im.gphotos_path  /* this does not seem to work, instead name seems to be generated from the current date, e.g. 2018-05-23.jpg */
-                    },
-                    'body'   : fs.readFileSync(im.path)
-                };
-                request.post(requestOptions,(err,response,body) => {
-                    if( err ) {
-                        reject(Error("Cannot upload bytes ("+err+")"));
-                    }
-                    else {
-                        let upload_token = body;
-                        requestOptions = {
-                            'json'    : true,
-                            'url'     : 'https://photoslibrary.googleapis.com/v1/mediaItems:batchCreate',
-                            'headers' : {
-                                'Content-Type'   : 'application/json',
-                                'Authorization'  : 'Bearer '+this.credentials.access_token
-                            },
-                            body      : {
-                                newMediaItems : [
-                                    {
-                                        'description' : im.gphotos_path.replace(/_/g,' '),
-                                        'simpleMediaItem' : {
-                                            'uploadToken' : upload_token
-                                        }
-                                    }
-                                ]
-                            }
+                        let yearDir  = common.filesRoot+"/"+gphoto.timestamp.getFullYear();
+                        let monthDir = yearDir+"/"+common.pad_number(gphoto.timestamp.getMonth()+1,2)+"."+common.month_names[gphoto.timestamp.getMonth()+1];
+                        let dateDir  = monthDir+"/"+gphoto.timestamp.getDate();
+                        let filename = dateDir+"/"+gphoto.gphotos_path;
+                        try {
+                            try { fs.mkdirSync(yearDir); } catch( err ) { if( err.code!='EEXIST' ) throw err; };
+                            try { fs.mkdirSync(monthDir); } catch( err ) { if( err.code!='EEXIST' ) throw err; };
+                            try { fs.mkdirSync(dateDir); } catch( err ) { if( err.code!='EEXIST' ) throw err; };
+                            fs.writeFileSync(filename,body);
+                            resolve(filename);
                         }
-                        request.post(requestOptions,(err,response,body) => {
-                            if( err ) {
-                                reject(Error(im.path+" on batch create => "+err));
-                            }
-                            else if( body.error ) {
-                                reject(Error(body.error.message));
-                            }
-                            else if( !body.newMediaItemResults || body.newMediaItemResults.length!=1 ) {
-                                reject(Error(im.path+" on batch create didn't return newMediaItemResults"));
-                            }
-                            else {
-                                let nmir = body.newMediaItemResults[0];
-                                if( nmir.status.code || nmir.status.message!="OK" ) {
-                                    reject(Error(im.path+" status code is "+nmir.status.code+"("+nmir.status.message+")"));
-                                }
-                                else {
-                                    // Photos are uploaded to GPhotos without filename (despite X-Goog-Upload-File-Name header, see above)
-                                    // Therefore when we need to preserve the gphotos_path in the cache by copiyng it from the original
-                                    let gphoto = new CachedGPhoto(nmir.mediaItem,im.gphotos_path);
-                                    // I have seen where description is not available immediately after download. Fill it in ourselves
-                                    if( !gphoto.description )
-                                        gphoto.description = im.gphotos_path.replace(/_/g,' ');
-                                    resolve(this.cache.add(gphoto));
-                                }
-                            }
-                        });
+                        catch( err ) {
+                            throw Error("Cannot write to '"+filename+"' ("+err+")");
+                        }
                     }
                 });
             });

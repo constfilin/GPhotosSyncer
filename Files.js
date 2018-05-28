@@ -36,7 +36,7 @@ class CachedFile {
             "DateTimeCreated",
             "DateTimeDigitized",
             "DigitalCreationDate",
-            "FileModifyDate",
+            // FileModifyDate - this comes from the current file timestamp, we do not want to rely on it
             "MediaCreateDate",
             "MediaModifyDate",
             "MetadataDate",
@@ -62,11 +62,11 @@ class CachedFile {
         self.all_exif_dates = all_exif_dates;
         self.exif_date      = self.constructor.get_exif_date_tags(0).reduce( (accumulator,t) => {
             if( all_exif_dates.hasOwnProperty(t) && all_exif_dates[t] ) {
-                if( all_exif_dates[t].valueOf()<accumulator.valueOf() )
+                if( !accumulator || (all_exif_dates[t].valueOf()<accumulator.valueOf()) )
                     accumulator = all_exif_dates[t];
             }
             return accumulator;
-        },Date.now());
+        },undefined);
         self.timestamp      = self.filename_date || self.exif_date || self.path_date || Date.now();
         // ID depends on the timestamp and the path
         self.id             = (String(self.timestamp.valueOf())+"_"+self.gphotos_path).toLowerCase();
@@ -222,9 +222,6 @@ class CachedFile {
     check_exif_timestamps() {
         if( !this.exif_date )
             throw Error("CachedFile was not properly initialized");
-
-        console.log(this);
-
         function get_timestamp_path( im, ts ) {
             // If the time difference is within the max discrepancy then do not suggesting anything new
             if( im.exif_date && Math.abs(im.exif_date.valueOf()-ts.valueOf())<(im.max_discrepancy_minutes*60*1000) )
@@ -469,7 +466,7 @@ class Files {
         process.on('exit', (code) => {
             if( this.cache && (this.cache_path==common.filesRoot) ) {
                 // TODO: check if cache has changed (probably by counting an SHA hash of it)
-                common.log(2,"Caching files to '"+common.filesCache+"'");
+                common.log(2,"Storing files to '"+common.filesCache+"'");
                 fs.writeFileSync(common.filesCache,JSON.stringify(this.cache.map(CachedFile.serialize)));
             }
         });

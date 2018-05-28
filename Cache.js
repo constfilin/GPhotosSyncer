@@ -56,6 +56,22 @@ class Cache {
     filter( predicate ) {
         return Object.filter(this.storage,predicate);
     }
+    // convenience methods
+    grep_gpath( re ) {
+        return this.filter(i=>(!i.gphotos_path||i.gphotos_path.match(re)));
+    }
+    grepv_gpath( re ) {
+        return this.filter(i=>(!i.gphotos_path||(i.gphotos_path.match(re)==null)));
+    }
+    grep_exifdate( re ) {
+        return this.filter(i=>(Date.toEXIFString(i.timestamp).match(re)));
+    }
+    grepv_gpath( re ) {
+        return this.filter(i=>(Date.toEXIFString(i.timestamp).match(re)==null));
+    }
+    grep_exifMistmaches( re ) {
+        return this.filter(i=>(Date.toEXIFString(i.timestamp).match(re) && (!i.gphotos_path || i.gphotos_path.indexOf(i.timestamp.getFullYear()+"_")!=0)));
+    }
 }
 
 module.exports = Cache;
