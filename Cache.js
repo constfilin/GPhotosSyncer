@@ -22,17 +22,20 @@ class Cache {
         return this.storage.hasOwnProperty(id) ? this.storage[id] : undefined;
     }
     add( item ) {
-        if( this.storage.hasOwnProperty(item.id) )
-            return undefined;
+        if( this.storage.hasOwnProperty(item.id) ) {
+            let s1 = String(this.storage[item.id]);
+            let s2 = String(item);
+            if( s1!=s2 ) {
+                common.log(1,"Replacing '"+s1+"' with '"+s2+"'");
+            }
+        }
+        else {
+            this.size++;
+        }
         this.storage[item.id] = this.constructor.make_sure_timeout_is_date(item);
-        this.size++;
         if( this.size%100==0 )
             common.log(3,"the number of items is "+this.size);
         return item;
-    }
-    update( item ) {
-        // Could only be called if item with this ID is already in storage
-        return this.storage[item.id]= this.constructor.make_sure_timeout_is_date(item);
     }
     del( id ) {
         if( !this.storage.hasOwnProperty(id) )

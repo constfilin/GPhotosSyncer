@@ -485,7 +485,7 @@ class Files {
             throw Error("id '"+id+"' is not known");
         return this.load(im.path).then( (item) => {
             this.cache.del(id);
-            return this.cache.update(item);
+            return this.cache.add(item);
         });
     }
     read( path ) {

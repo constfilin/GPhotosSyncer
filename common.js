@@ -52,14 +52,15 @@ Date.toEXIFString = function( d ) {
     if( d.toString()=="Invalid Date" )
         return d.toString();
     let common = module.exports;
-    return d.getFullYear()+":"+common.pad_number(d.getMonth()+1,2)+":"+common.pad_number(d.getDate(),2)+" "+
-        common.pad_number(d.getHours(),2)+":"+common.pad_number(d.getMinutes(),2)+":"+common.pad_number(d.getSeconds(),2);
+    return d.getUTCFullYear()+":"+common.pad_number(d.getUTCMonth()+1,2)+":"+common.pad_number(d.getUTCDate(),2)+" "+
+        common.pad_number(d.getUTCHours(),2)+":"+common.pad_number(d.getUTCMinutes(),2)+":"+common.pad_number(d.getUTCSeconds(),2);
 }
 Date.fromEXIFString = function( es ) {
     let m;
     if( (m=String(es).match(/^([0-9]+):([0-9]{2}):([0-9]{2})[ \t]+([0-9]{2}):([0-9]{2}):([0-9]{2}).*$/i)) ) {
 	      if( Number(m[2])==0 ) m[2] = 6; // If month is set to 0 incorrectly then default it to June
-        return new Date(Number(m[1]),Number(m[2])-1,Number(m[3]),Number(m[4]),Number(m[5]),Number(m[6]));
+        // Date.UTC will give us a date in UTC (because EXIF strings are UTC strings)
+        return new Date(Date.UTC(Number(m[1]),Number(m[2])-1,Number(m[3]),Number(m[4]),Number(m[5]),Number(m[6])));
     }
     return new Date('Invalid Date');
 }

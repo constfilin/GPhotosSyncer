@@ -33,14 +33,8 @@ const _ACTIONS = [
     new Action("// Updating cache"),
     new Action("gphotos_cache=mediaId","Add gphoto to cache by its mediaId in Google Photos",false,true,function(files,gphotos,id) { 
         gphotos.load(id).then( (item) => {
-            if( gphotos.cache.get(item.id) ) {
-                gphotos.cache.update(item);
-                console.log("Updated file "+item);
-            }
-            else {
-                gphotos.cache.add(item);
-                console.log("Added file "+item);
-            }
+            gphotos.cache.add(item);
+            console.log("Cached "+item);
         });
     }),
     new Action("gphotos_uncache=cacheid","Delete cache item by id (but leave gphoto)",false,true,function(files,gphotos,id) {
@@ -128,14 +122,8 @@ const _ACTIONS = [
     new Action("// Updating cache"),
     new Action("files_cache=filePath","Add a file to cache",true,false,function(files,gphotos,id) {
         files.load(id).then( (item) => {
-            if( files.cache.get(item.id) ) {
-                files.cache.update(item);
-                console.log("Updated file "+item);
-            }
-            else {
-                files.cache.add(item);
-                console.log("Added file "+item);
-            }
+            files.cache.add(item);
+            console.log("Cached "+item);
         });
     }),
     new Action("files_uncache=cacheid","Delete cached file by id (but leave file itself)",true,false,function(files,gphotos,id) {
@@ -214,20 +202,23 @@ const _ACTIONS = [
             console.log("Updated cache information about files of year "+year);
         });
     }),
-    new Action("files_upload=cachedid","(Re-)upload cached file to GPhotos",true,true,function(files,gphotos,id) {
-        let item = files.cache.get(id);
-        if( item ) {
+    new Action("files_sync=cachedid_or_filepath","(Re-)upload cached file to GPhotos",true,true,function(files,gphotos,id) {
+        let sync = (item)  => {
             gphotos.upload(item).then( (gphoto) => {
                 console.log("Uploaded file "+item+" to gphoto "+gphoto);
             }).catch( (err) => {
                 console.log("Cannot upload file "+item+" ("+err+")");
             });
         }
+        let item = files.cache.get(id);
+        if( item ) {
+            sync(item);
+        }
         else {
-            console.log("File id '"+id+"' is not known");
+            files.load(id).then(item => { sync(item); });
         }
     }),
-    new Action("files_uploadMissingGPhotosYear=year","finds all files that are not among GPhotos for a given year and upload them to GPhotos",true,true,function(files,gphotos,year) {
+    new Action("files_syncMissingGPhotosYear=year","finds all files that are not among GPhotos for a given year and upload them to GPhotos",true,true,function(files,gphotos,year) {
         let difference = common.get_difference(
             files.cache.filter  (i => (i.timestamp.getFullYear()==year)),
             gphotos.cache.filter(p => (p.timestamp.getFullYear()==year)),

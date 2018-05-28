@@ -263,7 +263,7 @@ class GPhotos {
             throw Error("id '"+id+"' is not known");
         return this.load(gphoto.key).then( (gphoto) => {
             this.cache.del(id);
-            return this.cache.update(gphoto);
+            return this.cache.add(gphoto);
         });
     }
     read( albumId ) {
