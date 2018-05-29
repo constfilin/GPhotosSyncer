@@ -9,7 +9,7 @@ API access to Google Photos happens by means of [Google Photos API](https://deve
 
 Running **GPhotosSyncer.js** with **--help** produces a list of command line options:
 ```
-USAGE: /home/cf/Work/GPhotosSyncer/GPhotosSyncer.js [--loglevel=loglevel] --action --action...
+USAGE: ./GPhotosSyncer.js [--loglevel=loglevel] --action --action...
 --loglevel - defines verbosity.
 --action   - describes what we are going to do, one of:
 
