@@ -66,7 +66,7 @@ USAGE: /home/cf/Work/GPhotosSyncer/GPhotosSyncer.js [--loglevel=loglevel] --acti
 
 If several actions are given on the command line then all of them are executed in the given order
 E.G.:
-   /home/cf/Work/GPhotosSyncer/GPhotosSyncer.js --files_deltaGPhotosYear=1915 --gphotos_deltaFilesYear=1915
+   ./GPhotosSyncer.js --files_deltaGPhotosYear=1915 --gphotos_deltaFilesYear=1915
 Will show the delta between files stored on file system and in GPhotos for year 1915.
 ```
 
