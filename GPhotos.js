@@ -86,7 +86,7 @@ class GPhotos {
             }
             catch( err ) {
                 common.log(2,"Cannot read stored token from '%s' ("+err+"), re-creating it",credentials_path);
-                let authUrl = result.generateAuthUrl({access_type:'offline',scope:scopes});
+                let authUrl = result.generateAuthUrl({/*access_type:'offline',*/scope:scopes});
                 let code    = common.get_answer('Authorize this app by visiting url '+authUrl+'\nEnter the code from that page here');
                 result.getToken(code,(err,token) => {
                     if( err ) {
@@ -106,6 +106,28 @@ class GPhotos {
                     }
                 });
             }
+        });
+    }
+    get_media_item_promise( mediaItemId ) {
+        return new Promise( (resolve,reject) => {
+            const requestOptions = {
+                'json'    : true,
+                'url'     : 'https://photoslibrary.googleapis.com/v1/mediaItems/'+mediaItemId,
+                'headers' : {
+                    'Authorization' : 'Bearer '+this.credentials.access_token
+                }
+            };
+            request.get(requestOptions,(err,response,body) => {
+                if( err ) {
+                    reject(err);
+                }
+                else if( body.error ) {
+                    reject(Error(body.error.message));
+                }
+                else {
+                    resolve(body);
+                }
+            });
         });
     }
     get_mediaitem_content_disposition_promise( mediaItem ) {
@@ -143,7 +165,7 @@ class GPhotos {
                 context.cache.add(gphoto);
                 common.log(3,"Context="+context+",loaded photo '"+gphoto.gphotos_path+"'");
                 context.addgphotos.resolve(resolve);
-            }).catch( err => {
+            }).catch( (err) => {
                 mediaItem.retryCount = (mediaItem.retryCount||0)+1;
                 if( mediaItem.retryCount<3 ) {
                     common.log(1,"Got error '"+err+" on a media item, retry count is "+mediaItem.retryCount+", retrying...");
@@ -199,14 +221,14 @@ class GPhotos {
             });
         });
     }
-    get_media_item_promise( mediaItemId ) { 
+    get_albums_promise( albums, page_token ) {
         return new Promise( (resolve,reject) => {
             const requestOptions = {
-                'json'    : true,
-                'url'     : 'https://photoslibrary.googleapis.com/v1/mediaItems/'+mediaItemId,
+                'url'     : 'https://photoslibrary.googleapis.com/v1/albums?pageSize=20'+(page_token?("&pageToken="+page_token):''),
                 'headers' : {
                     'Authorization' : 'Bearer '+this.credentials.access_token
-                }
+                },
+                'json'    : true
             };
             request.get(requestOptions,(err,response,body) => {
                 if( err ) {
@@ -215,10 +237,20 @@ class GPhotos {
                 else if( body.error ) {
                     reject(Error(body.error.message));
                 }
+                else if( body.hasOwnProperty('albums') ) {
+                    Object.assign(albums,Object.map(body.albums, a=> {
+                        delete a.coverPhotoBaseUrl;
+                        delete a.productUrl;
+                        return a;
+                    }));
+                    resolve(body.nextPageToken);
+                }
                 else {
-                    resolve(body);
+                    reject(Error("Body does not have 'albums'"));
                 }
             });
+        }).then( (page_token) => {
+            return page_token ? this.get_albums_promise(albums,page_token) : albums;
         });
     }
     login() {
@@ -312,34 +344,8 @@ class GPhotos {
     ////////////////////////////////////////////////////////////////////////
     // Interface to GPhotos specific operations
     ////////////////////////////////////////////////////////////////////////
-    getAlbums( albums ) {
-        return new Promise( (resolve,reject) => {
-            const requestOptions = {
-                'url'     : 'https://photoslibrary.googleapis.com/v1/albums',
-                'headers' : {
-                    'Authorization' : 'Bearer '+this.credentials.access_token
-                },
-                'json'    : true
-            };
-            request.get(requestOptions,(err,response,body) => {
-                if( err ) {
-                    reject(err);
-                }
-                else if( body.error ) {
-                    reject(Error(body.error.message));
-                }
-                else if( body.hasOwnProperty('albums') ) {
-                    resolve(Object.map(body.albums, a=> {
-                        delete a.coverPhotoBaseUrl;
-                        delete a.productUrl;
-                        return a;
-                    }));
-                }
-                else {
-                    reject(Error("Body does not have 'albums'"));
-                }
-            });
-        });
+    getAlbums() {
+        return this.get_albums_promise({});
     }
     upload( im ) {
         return new Promise( (resolve,reject) => {
@@ -408,12 +414,54 @@ class GPhotos {
     }
     download( gphoto ) {
         return new Promise( (resolve,reject) => {
-            // TODO: figure out how to get the *original* uploaded bytes, not the bytes stropped o EXIF info.
-            // According to https://developers.google.com/photos/library/guides/access-media-items#base-urls we cannot use
-            // stored baseUrl (if any) and have to re-download photo first. Except this time we do not content-disposition.
-            this.get_media_item_promise(gphoto.key).then( (mediaItem) => {
+            if( false ) {
+                // TODO: figure out how to get the *original* uploaded bytes, not the bytes stropped o EXIF info.
+                // According to https://developers.google.com/photos/library/guides/access-media-items#base-urls we cannot use
+                // stored baseUrl (if any) and have to re-download photo first. Except this time we do not content-disposition.
+                this.get_media_item_promise(gphoto.key).then( (mediaItem) => {
+                    const requestOptions = {
+                        'url' : mediaItem.baseUrl+"=w"+mediaItem.mediaMetadata.width+"-h"+mediaItem.mediaMetadata.height,
+                        'headers' : {
+                            'Authorization'  : 'Bearer '+this.credentials.access_token
+                        },
+                        'encoding' : null
+                    };
+                    request.get(requestOptions,(err,response,body) => {
+                        if( err ) {
+                            reject(err);
+                        }
+                        else if( false ) {
+                            // TODO: add here a condition that makes sure that the bytes dowloaded are indeed a photo.
+                            // The problem is that GPhotos will respond with HTTP code 200 and message like http://prntscr.com/jnrha7 
+                            // even when client credentials are no sufficient. It should have responded with HTTP 403 instead
+                            reject(err);
+                        }
+                        else {
+                            let yearDir  = common.filesRoot+"/"+gphoto.timestamp.getFullYear();
+                            let monthDir = yearDir+"/"+common.pad_number(gphoto.timestamp.getMonth()+1,2)+"."+common.month_names[gphoto.timestamp.getMonth()+1];
+                            let dateDir  = monthDir+"/"+gphoto.timestamp.getDate();
+                            let filename = dateDir+"/"+gphoto.gphotos_path;
+                            try {
+                                try { fs.mkdirSync(yearDir); } catch( err ) { if( err.code!='EEXIST' ) throw err; };
+                                try { fs.mkdirSync(monthDir); } catch( err ) { if( err.code!='EEXIST' ) throw err; };
+                                try { fs.mkdirSync(dateDir); } catch( err ) { if( err.code!='EEXIST' ) throw err; };
+                                fs.writeFileSync(filename,body);
+                                resolve(filename);
+                            }
+                            catch( err ) {
+                                throw Error("Cannot write to '"+filename+"' ("+err+")");
+                            }
+                        }
+                    });
+                });
+            }
+            else {
+                const accessTokenParams = {
+                 'access_token' : this.credentials.access_token
+                };
+                const requestQuery   = querystring.stringify(accessTokenParams)
                 const requestOptions = {
-                    'url' : mediaItem.baseUrl+"=w"+mediaItem.mediaMetadata.width+"-h"+mediaItem.mediaMetadata.height,
+                    'url' : gphoto.productUrl+"?"+requestQuery,
                     'headers' : {
                         'Authorization'  : 'Bearer '+this.credentials.access_token
                     },
@@ -446,7 +494,7 @@ class GPhotos {
                         }
                     }
                 });
-            });
+            }
         });
     }
 }

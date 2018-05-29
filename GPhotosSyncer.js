@@ -189,7 +189,7 @@ const _ACTIONS = [
     }),
     new Action("files_deltaEXIFDate=pattern","Show files with EXIF date matching a regexp that are not among gphotos with EXIF date matching the same regexp",true,true,(files,gphotos,pattern) => {
         let re = new RegExp(pattern,"i");
-        let difference = common.get_difference(files.cache.grep_exifdate(re),gphotos.cache.filter(re),'file','gphoto');
+        let difference = common.get_difference(files.cache.grep_exifdate(re),gphotos.cache.grep_exifdate(re),'file','gphoto');
         if( difference.missing.length ) {
             console.log("Found "+difference.missing.length+" files that are not in gphotos:\n"+
                         "\t"+difference.missing.map(i => "{"+i.id+","+i.gphotos_path+"}").join("\n\t"));
@@ -228,7 +228,7 @@ const _ACTIONS = [
     },true),
     new Action("files_syncEXIFDate=pattern","Upload files with EXIF date matching a regexp that are not among gphotos with EXIF date matching the same regexp",true,true,(files,gphotos,pattern) => {
         let re = new RegExp(pattern,"i");
-        let difference = common.get_difference(files.cache.grep_exifdate(re),gphotos.cache.filter(re),'file','gphoto');
+        let difference = common.get_difference(files.cache.grep_exifdate(re),gphotos.cache.grep_exifdate(re),'file','gphoto');
         if( difference.missing.length ) {
             if( common.get_answer("Found "+difference.missing.length+" files that are not in gphotos:\n"+
                                   "\t"+difference.missing.map(i => "{"+i.id+","+i.gphotos_path+"}").join("\n\t")+"\n"+
