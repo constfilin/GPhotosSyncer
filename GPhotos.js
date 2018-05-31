@@ -381,7 +381,7 @@ class GPhotos {
                                 }
                             ]
                         }
-                    }
+                    };
                     request.post(requestOptions,(err,response,body) => {
                         if( err ) {
                             reject(Error(im.path+" on batch create => "+err));

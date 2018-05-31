@@ -233,7 +233,7 @@ const _ACTIONS = [
             if( common.get_answer("Found "+difference.missing.length+" files that are not in gphotos:\n"+
                                   "\t"+difference.missing.map(i => "{"+i.id+","+i.gphotos_path+"}").join("\n\t")+"\n"+
                                   "Upload them?","y")=="y" ) {
-                Promises.all(difference.missing.map( file => gphotos.upload(file).then( (gphoto) => {
+                Promise.all(difference.missing.map( file => gphotos.upload(file).then( (gphoto) => {
                     console.log("File "+file+" was uploaed to "+gphoto);
                 }).catch( (err) => {
                     console.log("Count not upload file "+file+" ("+err+")");
