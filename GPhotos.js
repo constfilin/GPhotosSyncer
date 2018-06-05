@@ -238,7 +238,7 @@ class GPhotos {
                     reject(Error(body.error.message));
                 }
                 else if( body.hasOwnProperty('albums') ) {
-                    Object.assign(albums,Object.map(body.albums, a=> {
+                    Object.assign(albums,Object.map(Object.rehash(body.albums,a=>a.id), a=> {
                         delete a.coverPhotoBaseUrl;
                         delete a.productUrl;
                         return a;
@@ -414,54 +414,14 @@ class GPhotos {
     }
     download( gphoto ) {
         return new Promise( (resolve,reject) => {
-            if( false ) {
-                // TODO: figure out how to get the *original* uploaded bytes, not the bytes stropped o EXIF info.
-                // According to https://developers.google.com/photos/library/guides/access-media-items#base-urls we cannot use
-                // stored baseUrl (if any) and have to re-download photo first. Except this time we do not content-disposition.
-                this.get_media_item_promise(gphoto.key).then( (mediaItem) => {
-                    const requestOptions = {
-                        'url' : mediaItem.baseUrl+"=w"+mediaItem.mediaMetadata.width+"-h"+mediaItem.mediaMetadata.height,
-                        'headers' : {
-                            'Authorization'  : 'Bearer '+this.credentials.access_token
-                        },
-                        'encoding' : null
-                    };
-                    request.get(requestOptions,(err,response,body) => {
-                        if( err ) {
-                            reject(err);
-                        }
-                        else if( false ) {
-                            // TODO: add here a condition that makes sure that the bytes dowloaded are indeed a photo.
-                            // The problem is that GPhotos will respond with HTTP code 200 and message like http://prntscr.com/jnrha7 
-                            // even when client credentials are no sufficient. It should have responded with HTTP 403 instead
-                            reject(err);
-                        }
-                        else {
-                            let yearDir  = common.filesRoot+"/"+gphoto.timestamp.getFullYear();
-                            let monthDir = yearDir+"/"+common.pad_number(gphoto.timestamp.getMonth()+1,2)+"."+common.month_names[gphoto.timestamp.getMonth()+1];
-                            let dateDir  = monthDir+"/"+gphoto.timestamp.getDate();
-                            let filename = dateDir+"/"+gphoto.gphotos_path;
-                            try {
-                                try { fs.mkdirSync(yearDir); } catch( err ) { if( err.code!='EEXIST' ) throw err; };
-                                try { fs.mkdirSync(monthDir); } catch( err ) { if( err.code!='EEXIST' ) throw err; };
-                                try { fs.mkdirSync(dateDir); } catch( err ) { if( err.code!='EEXIST' ) throw err; };
-                                fs.writeFileSync(filename,body);
-                                resolve(filename);
-                            }
-                            catch( err ) {
-                                throw Error("Cannot write to '"+filename+"' ("+err+")");
-                            }
-                        }
-                    });
-                });
-            }
-            else {
-                const accessTokenParams = {
-                 'access_token' : this.credentials.access_token
-                };
-                const requestQuery   = querystring.stringify(accessTokenParams)
+            // See http://prntscr.com/jqwgic - i.e. API does not allow getting "raw" bytes from Google Photos
+            // TODO: figure out how to get the *original* uploaded bytes, not the bytes stropped o EXIF info.
+            //
+            // According to https://developers.google.com/photos/library/guides/access-media-items#base-urls we cannot use
+            // stored baseUrl (if any) and have to re-download photo first. Except this time we do not content-disposition.
+            this.get_media_item_promise(gphoto.key).then( (mediaItem) => {
                 const requestOptions = {
-                    'url' : gphoto.productUrl+"?"+requestQuery,
+                    'url' : mediaItem.baseUrl+"=w"+mediaItem.mediaMetadata.width+"-h"+mediaItem.mediaMetadata.height,
                     'headers' : {
                         'Authorization'  : 'Bearer '+this.credentials.access_token
                     },
@@ -494,7 +454,7 @@ class GPhotos {
                         }
                     }
                 });
-            }
+            });
         });
     }
 }
