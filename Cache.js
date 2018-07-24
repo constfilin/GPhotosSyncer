@@ -66,7 +66,7 @@ class Cache {
     grep_exifdate( re ) {
         return this.filter(i=>(Date.toEXIFString(i.timestamp).match(re)));
     }
-    grepv_gpath( re ) {
+    grepv_exifdate( re ) {
         return this.filter(i=>(Date.toEXIFString(i.timestamp).match(re)==null));
     }
     grep_exifMistmaches( re ) {
