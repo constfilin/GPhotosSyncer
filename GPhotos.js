@@ -69,10 +69,9 @@ class ReadContext {
         this.pages.add(new Promise( (resolve,reject) => {
             this.last_page_resolve = resolve;
         }));
-        this.addgphotos = new BunchOfPromises();
     }
     toString() {
-        return "pages={"+this.pages+"},addgphotos={"+this.addgphotos+"}";
+        return "pages={"+this.pages+"}";
     }
 }
 class GPhotos {  
@@ -130,54 +129,6 @@ class GPhotos {
             });
         });
     }
-    get_mediaitem_content_disposition_promise( mediaItem ) {
-        const content_disposition = 'content-disposition';
-        const cd_re               = /^(?:.*;)?filename=(['"])([^'"]+)\1.*$/i;
-        return new Promise( (resolve,reject) => {
-            let headOptions = {
-                'url'    : mediaItem.baseUrl+"=w1-h1",
-                'method' : 'HEAD',
-                'headers': {"Connection": "keep-alive"}
-            };
-            request(headOptions,(err,response,body) => {
-                if( err ) {
-                    reject(err);
-                }
-                else if( !response.headers.hasOwnProperty(content_disposition) ) {
-                    reject(Error("HEAD request didn't return "+content_disposition));
-                }
-                else {
-                    let matches = response.headers[content_disposition].match(cd_re);
-                    if( matches ) {
-                        resolve(matches[2]);
-                    }
-                    else {
-                        reject(Error(content_disposition+" did not match regular expression"+re));
-                    }
-                }
-            });
-        });
-    }
-    get_add_gphoto_promise( context, mediaItem ) {
-        return new Promise( (resolve,reject) => {
-            this.get_mediaitem_content_disposition_promise(mediaItem).then( (content_disposition) => {
-                let gphoto = new CachedGPhoto(mediaItem,content_disposition);
-                context.cache.add(gphoto);
-                common.log(3,"Context="+context+",loaded photo '"+gphoto.gphotos_path+"'");
-                context.addgphotos.resolve(resolve);
-            }).catch( (err) => {
-                mediaItem.retryCount = (mediaItem.retryCount||0)+1;
-                if( mediaItem.retryCount<3 ) {
-                    common.log(1,"Got error '"+err+" on a media item, retry count is "+mediaItem.retryCount+", retrying...");
-                    context.addgphotos.add(this.get_add_gphoto_promise(context,mediaItem));
-                    context.addgphotos.resolve(resolve);
-                }
-                else {
-                    context.addgphotos.reject(reject,Error("Cannot get content disposition ("+err+")"));
-                }
-            });
-        });
-    }
     get_page_promise( context, pageToken ) {
         return new Promise( (resolve,reject) => {
             const body = {'pageSize':100};
@@ -204,9 +155,10 @@ class GPhotos {
                     context.pages.reject(reject,Error(body.error.message));
                 }
                 else {
-                    // Once Google fixes https://issuetracker.google.com/issues/79656863 the following statement will no longer be necessary
                     body.mediaItems.forEach( mi => {
-                        context.addgphotos.add(this.get_add_gphoto_promise(context,mi));
+                        let gphoto = new CachedGPhoto(mi,mi.filename);
+                        context.cache.add(gphoto);
+                        common.log(3,"Context="+context+",loaded photo '"+gphoto.gphotos_path+"'");
                     });
                     common.log(1,"Context="+context+",loaded "+body.mediaItems.length+" media items");
                     if( body.nextPageToken ) {
@@ -285,11 +237,7 @@ class GPhotos {
     }
     load( mediaItemId ) {
         return this.get_media_item_promise(mediaItemId).then( (mediaItem) => {
-            this.get_mediaitem_content_disposition_promise(mediaItem).then( (content_disposition) => {
-                return new CachedGPhoto(mediaItem,content_disposition);
-            }).catch( (err) => {
-                throw Error("Cannot get content disposition ("+err+")");
-            });
+            return new CachedGPhoto(mediaItem,mediaItem.filename);
         });
     }
     updateId( id ) {
@@ -318,24 +266,20 @@ class GPhotos {
         // more pages to load and promises to resolve. Ultimately to resolve all these page promises we have to run code like:
         //     Promise.all(array_of_page_promises);
         //     array_of_page_promises.push(next_page_promise);
-        // However this does  not really work because Promise.all() will return a promise to resolve the last pending item and 
+        // However this does not really work because Promise.all() will return a promise to resolve the last pending item and 
         // this item might load more media result pages and add more pages/promises to array_of_page_promises
         //
         // The solution was to create a "last page" promise and stick it as an item into the same array array_of_page_promises.
         // This promise gets resolved only when the media returns a page without nextPageToken. This means that there are no
         // more media pages to load and Promise.all(array_of_page_promises) can return to finish loading titles of the media 
         // items. Creating such a "last page" promise happens inside of ReadContext constructor.
-        //
-        // Separately, as pages are loaded, the code creates (due to https://issuetracker.google.com/issues/79656863) promises 
-        // to load titles of the media items. These are put into ReadContext.addgphotos promises and the code waits on all
-        // these addgphotos promises before resolving the main "get photos" promise.
         let context = new ReadContext(cache,albumId);
         context.pages.add(this.get_page_promise(context));
         return Promise.all(context.pages.promises).then( () => {
             common.log(1,"All pages have been loaded ("+context+")");
-            return Promise.all(context.addgphotos.promises).then( () => {
-                return this;
-            });
+            this.cache = cache;
+            this.cache_albumId = albumId;
+            return this;
         }).catch( (err) => {
             common.log(1,"There was an error loading pages ("+err+")");
             throw err;
@@ -354,7 +298,8 @@ class GPhotos {
                 'headers': {
                     'Content-Type'           : 'application/octet-stream',
                     'Authorization'          : 'Bearer '+this.credentials.access_token,
-                    'X-Goog-Upload-File-Name': im.gphotos_path  /* this does not seem to work, instead name seems to be generated from the current date, e.g. 2018-05-23.jpg */
+                    'X-Goog-Upload-Protocol' : 'raw',
+                    'X-Goog-Upload-File-Name': im.gphotos_path  /* this does not seem to work, see https://issuetracker.google.com/issues/79757390 */
                 },
                 'body'   : fs.readFileSync(im.path)
             };
@@ -399,7 +344,7 @@ class GPhotos {
                             }
                             else {
                                 // Photos are uploaded to GPhotos without filename (despite X-Goog-Upload-File-Name header, see above)
-                                // Therefore when we need to preserve the gphotos_path in the cache by copiyng it from the original
+                                // Therefore when we need to preserve the gphotos_path in the cache by copying it from the original
                                 let gphoto = new CachedGPhoto(nmir.mediaItem,im.gphotos_path);
                                 // I have seen where description is not available immediately after download. Fill it in ourselves
                                 if( !gphoto.description )
@@ -415,6 +360,7 @@ class GPhotos {
     download( gphoto ) {
         return new Promise( (resolve,reject) => {
             // See http://prntscr.com/jqwgic - i.e. API does not allow getting "raw" bytes from Google Photos
+	    // See https://stackoverflow.com/questions/50491468/download-full-resolution-video-from-google-photos-api/50690484#50690484
             // TODO: figure out how to get the *original* uploaded bytes, not the bytes stropped o EXIF info.
             //
             // According to https://developers.google.com/photos/library/guides/access-media-items#base-urls we cannot use
