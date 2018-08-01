@@ -3,8 +3,6 @@ I developed **GPhotosSyncer** to sync an images library stored and tagged in a f
 Why did I do this? Because I do not want to manually re-tag all my thousands photos in Google Photos.
 
 API access to Google Photos happens by means of [Google Photos API](https://developers.google.com/photos/library/guides/get-started). It came out beginning of May 2018, promises to solve the problem for good however there is a few issues:
-1. setting image file name [does not work](https://issuetracker.google.com/issues/79757390)
-1. getting image file name is harder than it could be (see [this issue](https://issuetracker.google.com/issues/79656863)).
 1. I still haven't figured out how to get from the API raw bytes of images that I have once uploaded to there
 
 Running **GPhotosSyncer.js** with **--help** produces a list of command line options:
