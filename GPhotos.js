@@ -359,15 +359,11 @@ class GPhotos {
     }
     download( gphoto ) {
         return new Promise( (resolve,reject) => {
-            // See http://prntscr.com/jqwgic - i.e. API does not allow getting "raw" bytes from Google Photos
-	    // See https://stackoverflow.com/questions/50491468/download-full-resolution-video-from-google-photos-api/50690484#50690484
-            // TODO: figure out how to get the *original* uploaded bytes, not the bytes stropped o EXIF info.
-            //
             // According to https://developers.google.com/photos/library/guides/access-media-items#base-urls we cannot use
             // stored baseUrl (if any) and have to re-download photo first. Except this time we do not content-disposition.
             this.get_media_item_promise(gphoto.key).then( (mediaItem) => {
                 const requestOptions = {
-                    'url' : mediaItem.baseUrl+"=w"+mediaItem.mediaMetadata.width+"-h"+mediaItem.mediaMetadata.height,
+                    'url' : mediaItem.baseUrl+"=d",
                     'headers' : {
                         'Authorization'  : 'Bearer '+this.credentials.access_token
                     },

@@ -99,12 +99,8 @@ const _ACTIONS = [
     new Action("gphotos_syncEXIFDate=pattern","Download gphotos with EXIF date matching a regexp that are not among the files with EXIF date matching the same regexp",true,true,(files,gphotos,pattern) => { 
         let re = new RegExp(pattern,"i");
         let difference = common.get_difference(gphotos.cache.grep_exifdate(re),files.cache.grep_exifdate(re),'gphoto','file');
-        [difference.missing[0]].forEach( (gphoto) => {
+        difference.missing.forEach( (gphoto) => {
             gphotos.download(gphoto).then( (filename) => {
-                // TODO:
-                // The trouble is that I haven't figured out how to get the original image bytes from GPhotos. What gphotos.download
-                // produces is an image body *without* any exifinformation. Therefore when we load the file, we will end up getting
-                // a differnt timestamp. I am not sure how to fix it but - perhaps - the fix should be in gphotos.download() method
                 files.load(filename).then( (file) => {
                     files.cache.add(file);
                     console.log("Synced '"+gphoto+" to '"+file+"'");
