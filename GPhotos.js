@@ -382,7 +382,7 @@ class GPhotos {
                     else {
                         let yearDir  = common.filesRoot+"/"+gphoto.timestamp.getFullYear();
                         let monthDir = yearDir+"/"+common.pad_number(gphoto.timestamp.getMonth()+1,2)+"."+common.month_names[gphoto.timestamp.getMonth()+1];
-                        let dateDir  = monthDir+"/"+gphoto.timestamp.getDate();
+                        let dateDir  = monthDir+"/"+common.pad_number(gphoto.timestamp.getDate(),2);
                         let filename = dateDir+"/"+gphoto.gphotos_path;
                         try {
                             try { fs.mkdirSync(yearDir); } catch( err ) { if( err.code!='EEXIST' ) throw err; };
